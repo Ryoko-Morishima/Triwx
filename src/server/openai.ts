@@ -7,7 +7,8 @@ export async function callJson<T>(params: {
   user: string;
   temperature?: number;
 }): Promise<T> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  // trim: コピペ時の改行・空白混入はHTTPヘッダを壊す(2026-07に本番で実際に発生)
+  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
   if (!apiKey) throw new Error("OPENAI_API_KEY が設定されていません（.env.local）");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {

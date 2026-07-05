@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       return new Response("text required", { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
     if (!apiKey) return new Response("OPENAI_API_KEY missing", { status: 500 });
 
     const res = await fetch("https://api.openai.com/v1/audio/speech", {

@@ -43,7 +43,7 @@ export async function getAccessToken(): Promise<string | null> {
   if (access && Date.now() < expiresAt - 60_000) return access;
   if (!refresh) return null;
 
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientId = (process.env.SPOTIFY_CLIENT_ID ?? "").trim() || undefined;
   if (!clientId) throw new Error("SPOTIFY_CLIENT_ID が設定されていません（.env.local）");
 
   const res = await fetch(TOKEN_URL, {
@@ -69,7 +69,7 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export async function exchangeCode(code: string, verifier: string): Promise<TokenSet> {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientId = (process.env.SPOTIFY_CLIENT_ID ?? "").trim() || undefined;
   if (!clientId) throw new Error("SPOTIFY_CLIENT_ID が設定されていません（.env.local）");
 
   const res = await fetch(TOKEN_URL, {

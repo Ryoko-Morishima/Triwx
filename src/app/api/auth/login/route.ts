@@ -9,7 +9,7 @@ function base64url(buf: Buffer) {
 }
 
 export async function GET() {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientId = (process.env.SPOTIFY_CLIENT_ID ?? "").trim() || undefined;
   if (!clientId) {
     return Response.json(
       { error: "SPOTIFY_CLIENT_ID が未設定です。.env.local を確認してください。" },
