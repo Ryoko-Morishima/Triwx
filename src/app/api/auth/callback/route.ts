@@ -22,5 +22,15 @@ export async function GET(req: Request) {
   await saveTokens(tokens);
   store.delete("sp_verifier");
 
+  // ログにユーザーを紐づけるため、SpotifyユーザーIDを取得してCookieに保存
+  try {
+    const me = await fetch("https://api.spotify.com/v1/me", {
+      headers: { Authorization: "Bearer " + tokens.accessToken },
+    }).then((r) => (r.ok ? r.json() : null));
+    if (me?.id) {
+      store.set("sp_uid", String(me.id), { httpOnly: true, sameSite: "lax", path: "/" });
+    }
+  } catch {}
+
   redirect("/");
 }

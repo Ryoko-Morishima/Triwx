@@ -28,6 +28,7 @@ export type ResolvedTrack = {
   durationMs: number;
   year: number | null;
   album: string | null;
+  reissue: boolean; // リマスター等の再発盤マーカーあり（年が原盤年でない可能性）
   artistExact: boolean;
   titleExact: boolean;
 };
@@ -53,37 +54,93 @@ export async function buildPolicy(state: StationState): Promise<Policy> {
 
 export async function generateCandidates(params: {
   policy: Policy;
+  stateText: string; // describeState()の生テキスト（カード・スライダー条件の厳守用）
   lastTrack: { title: string; artist: string } | null;
-  exclude: { title: string; artist: string }[];
   count: number;
+  driftNote?: string | null; // 言語・地域の吸着を崩すための追加指示
 }): Promise<Candidate[]> {
-  const { policy, lastTrack, exclude, count } = params;
+  const { policy, stateText, lastTrack, count, driftNote } = params;
 
-  const excludeText = exclude.length
-    ? exclude.map((t) => `- ${t.title} / ${t.artist}`).join("\n")
-    : "（なし）";
+  // 設計メモ: かつては「最近流れた曲」20件をプロンプトに入れていたが、
+  // 長いセッションでこのリストが強力な実例集として働き、方針・カードより
+  // 直近の傾向（言語圏など）を模倣させてしまうことが判明した。
+  // 重複排除はサーバ側（fill route）でコード的に行い、プロンプトには入れない。
 
   const lastText = lastTrack
     ? `${lastTrack.title} / ${lastTrack.artist}`
-    : "（これが最初の曲。方針に合う入り口の曲を選ぶ）";
+    : "（アンカーなし。選曲条件の中心から自由に選ぶ）";
 
   const out = await callJson<{ candidates: Candidate[] }>({
     system:
       "あなたは連続ラジオの選曲家です。実在する楽曲のみを挙げてください。曲名とアーティスト名の組み合わせが正確であることが最重要です。" +
-      "方針に「ことば・地域」の指定がある場合、全候補でそれを厳守する（英語圏の曲を混ぜない）。指定がない場合も英語圏だけに偏らず、世界の音楽を視野に入れる。" +
       "自信のない組み合わせを出すくらいなら、確実に実在する別の曲を選んでください。" +
-      `出力はJSONのみ: {"candidates": [{"title": "曲名（原語表記）", "artist": "アーティスト名（原語表記）", "why": "前の曲からの接続理由を一言"}]} を${count}件。` +
-      "同一アーティストの連続は避け、除外リストの曲・アーティストの直近使用も避けてください。",
+      "選曲条件（カード・スライダー）は毎回の候補すべてに適用される現在の条件であり、直前までに流れた曲の傾向より常に優先される。" +
+      "「ことば・地域」の指定がある場合、全候補でそれを厳守する。指定がない場合は英語圏だけにも特定の言語圏だけにも偏らず、世界の音楽を視野に入れる。" +
+      "重要: 「前の曲からの接続」とは質感・温度・リズム・時代の空気のつながりのことであり、言語や国籍を引き継ぐことではない。" +
+      "禁止: 曲名や歌詞にカードの単語が入っているという理由で選ばないこと（例:「ドライブ」でタイトルにdrive/road/rideを含む曲を集める、「雨」でrainを含む曲を集める等）。カードはあくまで音の質感・気分の指定である。" +
+      `出力はJSONのみ: {"candidates": [{"title": "曲名（原語表記）", "artist": "アーティスト名（原語表記）", "why": "選んだ理由を一言"}]} を${count}件。` +
+      "候補同士は別のアーティストにすること。",
     user: [
+      `【選曲条件（現在の卓の状態・厳守）】\n${stateText}`,
       `【選曲方針】\n${policy.directive}`,
       `【直前に流れた曲】\n${lastText}`,
-      `【最近流れた曲（除外）】\n${excludeText}`,
-      "前の曲からの流れを意識しつつ、方針に沿った次の曲の候補を挙げてください。",
+      ...(driftNote ? [`【注意】${driftNote}`] : []),
+      "現在の選曲条件を最優先に、次の曲の候補を挙げてください。",
     ].join("\n\n"),
     temperature: 0.9,
   });
 
   return Array.isArray(out.candidates) ? out.candidates.slice(0, count) : [];
+}
+
+// ---- 候補の検品（審査パス） ----
+// 生成役は流れや多様性を考えて条件判定が甘くなるため、判定専任の審査役を分離する。
+// 条件に明確に合わない候補（例:「踊れる」指定でビートの弱いロック）を解決前に落とす。
+
+export type Verdict = { index: number; fits: boolean };
+
+export function applyVerdicts(
+  candidates: Candidate[],
+  verdicts: Verdict[] | null | undefined,
+): Candidate[] {
+  if (!Array.isArray(verdicts) || verdicts.length === 0) return candidates;
+  const fitSet = new Set(
+    verdicts.filter((v) => v && v.fits === true && Number.isInteger(v.index)).map((v) => v.index),
+  );
+  const passed = candidates.filter((_, i) => fitSet.has(i));
+  // 審査が全滅させた場合は空を返す（fill側が次のバッチへ進む）
+  return passed;
+}
+
+export async function judgeCandidates(params: {
+  conditionsText: string; // describeJudgeConditions()の出力（カード+極値温度のみ）
+  candidates: Candidate[];
+}): Promise<Candidate[]> {
+  const { conditionsText, candidates } = params;
+  if (candidates.length === 0) return candidates;
+
+  try {
+    const list = candidates
+      .map((c, i) => `${i}: ${c.title} / ${c.artist}`)
+      .join("\n");
+
+    const out = await callJson<{ verdicts: Verdict[] }>({
+      system:
+        "あなたは音楽番組の選曲審査員です。候補曲が条件に合っているかだけを判定します。" +
+        "その曲を知っていて、いずれかの条件に明確に外れる場合のみ fits: false。" +
+        "条件に合う場合、および曲をよく知らない・判断がつかない場合は fits: true（実在確認と重複排除は別工程が行うので、ここでは質感の明確な不適合だけを弾く）。" +
+        '出力はJSONのみ: {"verdicts": [{"index": 番号, "fits": true/false}]} を候補全件分。',
+      user: `【選曲条件】\n${conditionsText}\n\n【候補】\n${list}`,
+      temperature: 0.1,
+    });
+
+    const passed = applyVerdicts(candidates, out.verdicts);
+    return passed;
+  } catch (e) {
+    // 審査が落ちても放送は止めない: 無審査で通す
+    console.error("judgeCandidates failed, passing all", e);
+    return candidates;
+  }
 }
 
 // ---- Spotify解決 ----
@@ -98,6 +155,18 @@ export function normalizeName(s: string): string {
     .trim();
 }
 
+const VERSION_MARKERS = /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal/i;
+const REISSUE_MARKERS = /remaster|reissue|anniversary|deluxe|expanded/i;
+
+/** バージョン選択スコア（小さいほど良い）。原曲を優先し、remix/live/cover等を強く避ける */
+export function scoreTrackVersion(rawTitle: string, albumName: string, titleExact: boolean): number {
+  let score = 0;
+  if (VERSION_MARKERS.test(rawTitle)) score += 10;
+  if (REISSUE_MARKERS.test(rawTitle) || REISSUE_MARKERS.test(albumName)) score += 1;
+  if (!titleExact) score += 0.5;
+  return score;
+}
+
 export async function resolveTrack(
   candidate: Candidate,
   accessToken: string,
@@ -107,53 +176,65 @@ export async function resolveTrack(
     `${candidate.title} ${candidate.artist}`,
   ];
 
+  type Scored = { track: ResolvedTrack; score: number };
+  const matches = new Map<string, Scored>();
+
   for (const q of queries) {
     const url =
-      "https://api.spotify.com/v1/search?type=track&limit=5&q=" +
+      "https://api.spotify.com/v1/search?type=track&limit=8&q=" +
       encodeURIComponent(q);
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (res.status === 429) {
-      // レート制限: このfillは諦める（次のfillで回復）
-      return null;
-    }
+    if (res.status === 429) return null; // レート制限: このfillは諦める
     if (!res.ok) continue;
 
     const data = await res.json();
     const items: any[] = data?.tracks?.items ?? [];
 
     for (const t of items) {
+      if (!t?.uri || matches.has(t.uri)) continue;
       const artists: string[] = (t?.artists ?? []).map((a: any) => String(a?.name ?? ""));
       const artistExact = artists.some(
         (a) => normalizeName(a) === normalizeName(candidate.artist),
       );
-
-      // アーティスト不一致は誤解決とみなし棄却（このアプリの品質の生命線）
+      // アーティスト不一致は誤解決とみなし棄却（品質の生命線・不変）
       if (!artistExact) continue;
 
-      const titleExact = normalizeName(t?.name ?? "") === normalizeName(candidate.title);
+      const rawTitle = String(t?.name ?? "");
+      const albumName = String(t?.album?.name ?? "");
+      const titleExact = normalizeName(rawTitle) === normalizeName(candidate.title);
+      const reissue = REISSUE_MARKERS.test(rawTitle) || REISSUE_MARKERS.test(albumName);
       const year = t?.album?.release_date
         ? Number(String(t.album.release_date).slice(0, 4)) || null
         : null;
 
-      return {
-        uri: t.uri,
-        title: t.name,
-        artist: artists[0] ?? candidate.artist,
-        artists,
-        durationMs: t.duration_ms ?? 0,
-        year,
-        album: t?.album?.name ?? null,
-        artistExact,
-        titleExact,
-      };
+      matches.set(t.uri, {
+        score: scoreTrackVersion(rawTitle, albumName, titleExact),
+        track: {
+          uri: t.uri,
+          title: rawTitle,
+          artist: artists[0] ?? candidate.artist,
+          artists,
+          durationMs: t.duration_ms ?? 0,
+          year,
+          album: albumName || null,
+          reissue,
+          artistExact,
+          titleExact,
+        },
+      });
     }
+
+    // 1本目のクエリで「原曲」と呼べるもの（score<10）が取れていれば2本目は撃たない
+    const best = [...matches.values()].sort((a, b) => a.score - b.score)[0];
+    if (best && best.score < 10) break;
   }
 
-  return null;
+  if (matches.size === 0) return null;
+  return [...matches.values()].sort((a, b) => a.score - b.score)[0].track;
 }
 
 // ---- ナレーション生成 ----
@@ -175,6 +256,7 @@ export async function buildNarration(params: {
       "・前にかかった曲への言及は禁止。選曲の流れ・つながり・雰囲気の変化についての説明も禁止。" +
       "・選曲条件（カードやスライダー）にどう合っているかの説明も禁止。" +
       "・リスナーへの呼びかけ（「おたのしみに」「お聴きください」等）や挨拶・番組名は禁止。" +
+      "・文型を毎回変える。「〇〇出身のバンド△△による「X」は、〇年にリリースされたアルバム『Y』収録」のような定型の繰り返しは禁止。年やアルバム名から入っても、音の描写から入ってもよい。" +
       '出力はJSONのみ: {"narration": "コメント本文"}',
     user:
       `次の曲: ${next.title} / ${next.artist}` +

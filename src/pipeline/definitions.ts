@@ -8,32 +8,33 @@ export type MoodCard = {
   id: string;
   label: string;
   promptText: string; // 選曲AIに渡す解釈文
+  group?: "time" | "scene" | "mood"; // UI表示用の仕切り（選曲ロジックには不使用）
 };
 
 export const moodCards: MoodCard[] = [
   // ---- 時間・天気 ----
-  { id: "morning", label: "朝", promptText: "一日のはじまりの澄んだ空気。軽やかで清潔感のある音。重すぎない。" },
-  { id: "afternoon", label: "昼下がり", promptText: "午後のゆるんだ時間。力の抜けたミッドテンポ、日だまりのような音色。" },
-  { id: "dusk", label: "夕暮れ", promptText: "昼と夜の境目。オレンジ色の光のような、少し感傷的で美しい曲。" },
-  { id: "midnight", label: "夜更け", promptText: "深夜の空気。音数が少なめ、残響、静けさの中の親密さ。BPMは控えめでよい。" },
-  { id: "rain", label: "雨", promptText: "雨の日の質感。しっとりした音像、内省、窓の外を眺めるような距離感。" },
-  { id: "sunny_holiday", label: "晴れた休日", promptText: "予定のない晴れた日の開放感。屋外の光を感じる、気持ちのいい曲。" },
+  { id: "morning", group: "time", label: "朝", promptText: "一日のはじまりの澄んだ空気。軽やかで清潔感のある音。重すぎない。" },
+  { id: "afternoon", group: "time", label: "昼下がり", promptText: "午後のゆるんだ時間。力の抜けたミッドテンポ、日だまりのような音色。" },
+  { id: "dusk", group: "time", label: "夕暮れ", promptText: "昼と夜の境目。オレンジ色の光のような、少し感傷的で美しい曲。" },
+  { id: "midnight", group: "time", label: "夜更け", promptText: "深夜の空気。音数が少なめ、残響、静けさの中の親密さ。BPMは控えめでよい。" },
+  { id: "rain", group: "time", label: "雨", promptText: "雨の日の質感。しっとりした音像、内省、窓の外を眺めるような距離感。" },
+  { id: "sunny_holiday", group: "time", label: "晴れた休日", promptText: "予定のない晴れた日の開放感。屋外の光を感じる、気持ちのいい曲。" },
   // ---- シーン ----
-  { id: "drive", label: "ドライブ", promptText: "走行感のあるグルーヴ。一定のリズム、前に進む推進力、風景が流れる感じ。" },
-  { id: "focus", label: "作業・集中", promptText: "集中を妨げない曲。歌が主張しすぎない、または器楽中心。一定の質感が続く。" },
-  { id: "kitchen", label: "料理・家事", promptText: "手を動かしながら聴いて楽しい曲。軽快なリズム、鼻歌を誘うメロディ。" },
-  { id: "gathering", label: "集い", promptText: "人が集まる場のBGM。会話を邪魔しない華やかさ、機嫌のいいグルーヴ。" },
+  { id: "drive", group: "scene", label: "ドライブ", promptText: "走行感のあるグルーヴ。一定のリズム、前に進む推進力、風景が流れる感じ。" },
+  { id: "focus", group: "scene", label: "作業・集中", promptText: "集中を妨げない曲。歌が主張しすぎない、または器楽中心。一定の質感が続く。" },
+  { id: "kitchen", group: "scene", label: "料理・家事", promptText: "手を動かしながら聴いて楽しい曲。軽快なリズム、鼻歌を誘うメロディ。" },
+  { id: "gathering", group: "scene", label: "集い", promptText: "人が集まる場のBGM。会話を邪魔しない華やかさ、機嫌のいいグルーヴ。" },
   // ---- 気分・質感 ----
-  { id: "dance", label: "踊れる", promptText: "体が動くダンサブルな曲。強いビートとグルーヴ。ジャンルは問わない。" },
-  { id: "uplift", label: "高揚", promptText: "気分が上がっていく感じ。開放感のあるコーラスやビルドアップ、ただし騒がしすぎない。" },
-  { id: "doze", label: "まどろみ", promptText: "眠りに落ちる手前の心地よさ。アンビエント寄り、柔らかい輪郭、急な展開がない曲。" },
-  { id: "bittersweet", label: "切なさ", promptText: "甘さと痛みが同居する感情。マイナーとメジャーの揺らぎ、郷愁を誘うメロディ。" },
-  { id: "romance", label: "ロマンチック", promptText: "甘く親密なムード。ソウル、スロージャム、美しいバラードやボサノバ。" },
-  { id: "grit", label: "ざらつき", promptText: "歪んだギターや荒い録音の質感。ガレージ、パンク、オルタナ、生々しいエネルギー。" },
-  { id: "nostalgia", label: "ノスタルジー", promptText: "懐かしさ。録音の質感やアレンジに時代の匂いがある曲。世代の記憶に触れる感じ。" },
-  { id: "city", label: "都会", promptText: "都市の夜景や雑踏の洗練。シティポップ、ネオソウル、洒脱で少しクールな質感。" },
-  { id: "nature", label: "自然", promptText: "屋外の開けた空気。アコースティックな手触り、土や光を感じるオーガニックな音。" },
-  { id: "experimental", label: "実験的", promptText: "定型から外れる面白さ。変わった構成・音色・リズム。ただし聴きやすさは完全には捨てない。" },
+  { id: "dance", group: "mood", label: "踊れる", promptText: "ビートで体を動かさせる曲。ダンスミュージック、ファンク、ディスコ、ハウス、アフロビート、ダンサブルなポップ/R&Bなど。テンポが速いだけのロックや、ビートの弱いギターポップは不可。" },
+  { id: "uplift", group: "mood", label: "高揚", promptText: "気分が上がっていく感じ。開放感のあるコーラスやビルドアップ、ただし騒がしすぎない。" },
+  { id: "doze", group: "mood", label: "まどろみ", promptText: "眠りに落ちる手前の心地よさ。アンビエント寄り、柔らかい輪郭、急な展開がない曲。" },
+  { id: "bittersweet", group: "mood", label: "切なさ", promptText: "甘さと痛みが同居する感情。マイナーとメジャーの揺らぎ、郷愁を誘うメロディ。" },
+  { id: "romance", group: "mood", label: "ロマンチック", promptText: "甘く親密なムード。ソウル、スロージャム、美しいバラードやボサノバ。" },
+  { id: "grit", group: "mood", label: "ざらつき", promptText: "歪んだギターや荒い録音の質感。ガレージ、パンク、オルタナ、生々しいエネルギー。" },
+  { id: "nostalgia", group: "mood", label: "ノスタルジー", promptText: "懐かしさ。録音の質感やアレンジに時代の匂いがある曲。世代の記憶に触れる感じ。" },
+  { id: "city", group: "mood", label: "都会", promptText: "都市の夜景や雑踏の洗練。シティポップ、ネオソウル、洒脱で少しクールな質感。" },
+  { id: "nature", group: "mood", label: "自然", promptText: "屋外の開けた空気。アコースティックな手触り、土や光を感じるオーガニックな音。" },
+  { id: "experimental", group: "mood", label: "実験的", promptText: "定型から外れる面白さ。変わった構成・音色・リズム。ただし聴きやすさは完全には捨てない。" },
 ];
 
 // ---- ことば・地域カード ----
@@ -94,7 +95,7 @@ export function isRegionCard(id: string): boolean {
 
 // ---- スライダー ----
 
-export type SliderId = "era" | "heat" | "popularity" | "surprise";
+export type SliderId = "era" | "heat" | "popularity";
 
 export type SliderBand = {
   min: number;
@@ -135,11 +136,11 @@ export const sliders: SliderDef[] = [
     rightLabel: "ホット",
     defaultValue: 50,
     bands: [
-      { min: 0, max: 19, label: "クール", promptText: "無機質・抑制的・都会的な距離感のあるサウンド。感情を抑えたボーカルや電子的質感を優先。" },
-      { min: 20, max: 39, label: "ややクール", promptText: "落ち着きと洗練を感じる、やや温度低めのサウンド。" },
+      { min: 0, max: 19, label: "クール", promptText: "感情表現が抑制された曲だけを選ぶ。抑えたボーカルや無表情な歌い方、余白のある音像、冷たく硬質な音色。熱唱・叫び・汗を感じる演奏は不可。" },
+      { min: 20, max: 39, label: "ややクール", promptText: "感情を内に秘めた、落ち着いた温度の曲を中心に。洗練と距離感を保つ。" },
       { min: 40, max: 60, label: "指定なし", promptText: "温度感は自由。" },
-      { min: 61, max: 80, label: "ややホット", promptText: "生命感や身体性を感じる、やや熱のあるサウンド。生楽器やソウルフルな歌唱を優先。" },
-      { min: 81, max: 100, label: "ホット", promptText: "感情があふれ、汗や熱気を感じる曲。力強い歌唱、グルーヴの強い演奏。" },
+      { min: 61, max: 80, label: "ややホット", promptText: "感情が声や演奏に乗りはじめ、身体の動きを感じる曲を中心に。" },
+      { min: 81, max: 100, label: "ホット", promptText: "感情がはっきり声と演奏に乗り、肉体感・汗・熱気を伴う曲だけを選ぶ。ソウルフルな熱唱、粘るグルーヴ、生々しい演奏。無機質・淡白・無感情な曲は不可。" },
     ],
   },
   {
@@ -149,25 +150,11 @@ export const sliders: SliderDef[] = [
     rightLabel: "定番",
     defaultValue: 50,
     bands: [
-      { min: 0, max: 19, label: "深掘り", promptText: "有名アーティストの代表曲・超定番曲を避け、アルバム曲や知る人ぞ知る曲を優先する。" },
-      { min: 20, max: 39, label: "やや深掘り", promptText: "大定番は少し避け、半歩掘った選曲にする。" },
-      { min: 40, max: 60, label: "指定なし", promptText: "人気度は自由。" },
+      { min: 0, max: 19, label: "深掘り", promptText: "誰もが知る有名曲・代表曲・シングルヒットは不可。有名アーティストならシングルカットされていないアルバム曲や深いカタログから、あるいは広く知られていないアーティストから選ぶ。「インディーの定番」も定番なので避ける。" },
+      { min: 20, max: 39, label: "やや深掘り", promptText: "大ヒット曲・代表曲は避けめにし、アルバム曲や準知名度の曲を多めに混ぜる。" },
+      { min: 40, max: 60, label: "指定なし", promptText: "人気度は自由。ただし誰もが知る大定番ばかりに寄せず、知名度に幅を持たせる。" },
       { min: 61, max: 80, label: "やや定番", promptText: "広く知られた曲を中心に選ぶ。" },
       { min: 81, max: 100, label: "定番", promptText: "誰もが知る有名曲・代表曲を中心に選ぶ。" },
-    ],
-  },
-  {
-    id: "surprise",
-    label: "意外性",
-    leftLabel: "安定",
-    rightLabel: "冒険",
-    defaultValue: 30,
-    bands: [
-      { min: 0, max: 19, label: "安定", promptText: "流れを裏切らない、期待通りの選曲をする。" },
-      { min: 20, max: 39, label: "やや安定", promptText: "基本は流れに沿いつつ、ときどき小さな変化をつける。" },
-      { min: 40, max: 60, label: "中間", promptText: "半分は期待通り、半分は少し意外な角度から選ぶ。" },
-      { min: 61, max: 80, label: "やや冒険", promptText: "ジャンルや地域を横断した、意外だが筋の通った選曲を混ぜる。" },
-      { min: 81, max: 100, label: "冒険", promptText: "大胆に飛ぶ。異ジャンル・異文化圏・時代を跨ぐ選曲を積極的に行う。ただし前の曲との接続理由は必ず持つ。" },
     ],
   },
 ];
@@ -194,6 +181,28 @@ export function getSliderBand(id: SliderId, value: number): SliderBand {
 }
 
 /** 卓の状態を、選曲AI用の条件テキストにまとめる（単一ソースからの導出） */
+/** 審査パス用: カード条件と、端に振られたスライダー条件だけを抽出する。
+    人気度は含めない（「知らない曲=不可」との組み合わせでデッドロックを起こすため）。
+    年代はコードのゲートで検証済みのため含めない。 */
+export function describeJudgeConditions(state: {
+  cards: string[];
+  sliders: Record<SliderId, number>;
+}): string {
+  const lines: string[] = [];
+
+  for (const id of state.cards) {
+    const c = getCard(id);
+    if (c) lines.push(`- ${c.label}: ${c.promptText}`);
+  }
+
+  const heat = getSliderBand("heat", state.sliders?.heat ?? 50);
+  if (heat.label === "クール" || heat.label === "ホット") {
+    lines.push(`- 温度感（${heat.label}）: ${heat.promptText}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function describeState(state: {
   cards: string[];
   sliders: Record<SliderId, number>;

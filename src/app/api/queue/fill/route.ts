@@ -1,26 +1,43 @@
-// src/app/api/queue/fill/route.ts — キュー補充API
+// src/app/api/queue/fill/route.ts — キュー補充API（多層フォールバック版）
 //
-// 1回の呼び出しで「次の1曲＋そのナレーション」を用意して返す。
-// 流れ: 方針（stateVersionごとにキャッシュ）→ 候補生成 → Spotify解決（不一致棄却）
-//       → ナレーション生成 → ログ下書き追記 → QueueItemを返却
+// 「放送を止めない」ための層構造。上から順に試し、最初に成功した層を使う:
+//   L1: 通常生成（候補4件×2バッチ、年代ゲート厳守）
+//   L2: 拡大バッチ（候補6件、実在確実な曲を強調）
+//   L3: 年代ゲートの緊急緩和（ゲートで棄却済みの解決済み曲から、レンジに最も近い年を救済）
+//   L4: リプレイ（過去ログの好評価曲を再放送。LLM/検索不要）
+//   L5: 種曲（初回セッション用の安全網）
+// アーティスト不一致の棄却（品質の生命線）はどの層でも緩めない。
+// どの層で成立したかは source / fallbackReason としてログに残す。
 import { getAccessToken } from "@/server/spotifyAuth";
+import { cookies } from "next/headers";
 import {
-  buildPolicy,
   generateCandidates,
+  judgeCandidates,
   resolveTrack,
+  normalizeName,
   buildNarration,
   type Policy,
   type StationState,
   type Candidate,
+  type ResolvedTrack,
 } from "@/pipeline/core";
-import { appendSegment } from "@/logs/store";
-import { eraYearRange, yearInRange } from "@/pipeline/definitions";
+import { appendSegment, listSegments } from "@/logs/store";
+import { getOrBuildPolicy, defaultPolicy } from "@/server/policyCache";
+import { eraYearRange, yearInRange, isRegionCard, describeState, describeJudgeConditions } from "@/pipeline/definitions";
+import { pickReplay, seedTracks, detectLanguageDrift, hasJapaneseScript } from "@/pipeline/fallback";
 import type { QueueItem, SegmentLog } from "@/logs/schema";
 
-// 方針キャッシュ（devサーバのプロセス内。キー: sessionId:version）
 const policyCache = new Map<string, Policy>();
-
 const CODE_VERSION = process.env.TRIW_CODE_VERSION ?? "mvp-dev";
+
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 export async function POST(req: Request) {
   try {
@@ -42,89 +59,245 @@ export async function POST(req: Request) {
       return Response.json({ ok: false, error: "not authed" }, { status: 401 });
     }
 
-    // 1) 方針（versionごとに1回だけLLM）
-    const cacheKey = `${sessionId}:${state.version}`;
-    let policy = policyCache.get(cacheKey);
-    if (!policy) {
-      policy = await buildPolicy(state);
-      policyCache.set(cacheKey, policy);
+    // ---- 方針（warmで事前生成済みなら即時。失敗しても既定方針で放送続行） ----
+    let policy: Policy;
+    try {
+      policy = await getOrBuildPolicy(sessionId, state);
+    } catch (e) {
+      console.error("buildPolicy failed, using default", e);
+      policy = defaultPolicy(state);
     }
 
-    // 2) 候補生成 → 3) 解決（最大2バッチ試行）
-    let resolved = null as Awaited<ReturnType<typeof resolveTrack>>;
+    const eraRange = eraYearRange(state.sliders?.era ?? 50);
+
+    // 地域カード未指定のときだけ、言語圏への吸着を検知して崩す
+    const hasRegionCard = (state.cards ?? []).some((id) => isRegionCard(id));
+    const driftNote = hasRegionCard ? null : detectLanguageDrift(history);
+
+    // 選曲条件の生テキスト（プロンプトに毎回注入し、直近の傾向より優先させる）
+    const stateText = describeState(state);
+
+    // 重複排除はコードで行う（プロンプトに履歴を入れない）。
+    // 表記ゆれ（リミックス接尾辞・feat.・全角等）で破れないよう normalizeName で正規化する
+    const normKey = (title: string, artist: string) =>
+      normalizeName(title) + "/" + normalizeName(artist);
+    const historyKeys = new Set(history.map((h) => normKey(h.title, h.artist)));
+
+    // 直近7日にかかった曲は全セッション横断で除外（それより前はプールに復帰する減衰設計。
+    // 「散らすための除外」が「永久に定番がかからない呪い」にならないための歯止め）
+    const RECENT_DAYS = 7;
+    try {
+      const recent = await listSegments(500);
+      const cutoff = Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000;
+      for (const seg of recent) {
+        const at = seg?.createdAt ? Date.parse(seg.createdAt) : NaN;
+        if (Number.isFinite(at) && at >= cutoff && seg?.track?.title) {
+          historyKeys.add(normKey(seg.track.title, seg.track.artist));
+        }
+      }
+    } catch {
+      // 参照失敗は無視（セッション内除外だけで続行）
+    }
+
+    // アーティストのクールダウン: 直近10曲は同一アーティストを出さない
+    const cooldownArtists = new Set(
+      history.slice(-10).map((h) => normalizeName(h.artist)),
+    );
+
+    // 審査パス用の条件（カード+極値の温度感のみ。人気度・年代は含めない）
+    const judgeConditions = describeJudgeConditions(state);
+
+    let resolved: ResolvedTrack | null = null;
     let picked: Candidate | null = null;
+    let source: "ai" | "replay" | "seed" = "ai";
+    let fallbackReason: string | null = null;
+    const driftBreak = !!driftNote;
+    let judgeRejectedTotal = 0;
 
-    for (let attempt = 0; attempt < 2 && !resolved; attempt++) {
-      const candidates = await generateCandidates({
-        policy,
-        lastTrack,
-        exclude: history,
-        count: 4,
-      });
+    // ゲートで棄却した解決済み曲を控えておく（L3で救済に使う）
+    const eraGated: { r: ResolvedTrack; c: Candidate }[] = [];
 
-      // 年代スライダーのハード制約（definitions.tsの単一定義から）
-      const eraRange = eraYearRange(state.sliders?.era ?? 50);
+    const tryCandidates = async (count: number, emphasizeReal: boolean) => {
+      let candidates: Candidate[] = [];
+      try {
+        candidates = await generateCandidates({
+          policy: emphasizeReal
+            ? { ...policy!, directive: policy!.directive + "\n（注意: 確実に実在する、よく知られた曲を優先すること）" }
+            : policy!,
+          stateText,
+          // ドリフト是正中はアンカー（直前曲）を切って方針の中心から選び直させる
+          lastTrack: driftNote ? null : lastTrack,
+          count,
+          driftNote,
+        });
+      } catch (e) {
+        console.error("generateCandidates failed", e);
+        return;
+      }
+
+      // 検品: 審査すべき条件（カード or 極値の温度感）があるときだけ審査パスを通す
+      if (judgeConditions.length > 0 && candidates.length > 0) {
+        const before = candidates.length;
+        candidates = await judgeCandidates({ conditionsText: judgeConditions, candidates });
+        judgeRejectedTotal += before - candidates.length;
+      }
 
       for (const c of candidates) {
-        // 直近履歴と同一アーティストの連発を避ける（直前2曲）
-        const recentArtists = history.slice(-2).map((h) => h.artist.toLowerCase());
-        if (recentArtists.includes(c.artist.toLowerCase())) continue;
+        // コード側の重複排除（正規化キー）とアーティスト・クールダウン
+        if (historyKeys.has(normKey(c.title, c.artist))) continue;
+        if (cooldownArtists.has(normalizeName(c.artist))) continue;
+        // 言語ハードゲート: 是正中は日本語スクリプトの候補を通さない（プロンプト任せにしない）
+        if (driftNote && (hasJapaneseScript(c.title) || hasJapaneseScript(c.artist))) continue;
 
         const r = await resolveTrack(c, token);
         if (!r) continue;
+        // 解決後の正式表記でも再チェック（候補表記と正式表記のズレによるすり抜け防止）
+        if (historyKeys.has(normKey(r.title, r.artist))) continue;
+        if (cooldownArtists.has(normalizeName(r.artist))) continue;
+        if (driftNote && (hasJapaneseScript(r.title) || hasJapaneseScript(r.artist))) continue;
 
-        // 年代検証: レンジ指定があるのに範囲外（または年不明）の曲は棄却
-        if (eraRange && !yearInRange(r.year, eraRange)) continue;
-
+        // 年代ゲート。リイシュー盤（リマスター等）は年が原盤年でない可能性があるため、
+        // 「新しめ」指定（minYearあり）のときは通さない。「古め」のみの指定なら通す。
+        if (eraRange) {
+          const blocked = r.reissue
+            ? eraRange.minYear != null
+            : !yearInRange(r.year, eraRange);
+          if (blocked) {
+            eraGated.push({ r, c });
+            continue;
+          }
+        }
         resolved = r;
         picked = c;
-        break;
+        return;
+      }
+    };
+
+    // L1: 通常生成×2バッチ
+    for (let i = 0; i < 2 && !resolved; i++) await tryCandidates(4, false);
+
+    // L2: 拡大バッチ
+    if (!resolved) await tryCandidates(6, true);
+
+    // L3: 年代ゲートの緊急緩和（レンジに最も近い年の曲を救済）
+    if (!resolved && eraGated.length > 0) {
+      const dist = (y: number | null) => {
+        if (y == null || !eraRange) return 9999;
+        if (eraRange.minYear != null && y < eraRange.minYear) return eraRange.minYear - y;
+        if (eraRange.maxYear != null && y > eraRange.maxYear) return y - eraRange.maxYear;
+        return 0;
+      };
+      eraGated.sort((a, b) => dist(a.r.year) - dist(b.r.year));
+      resolved = eraGated[0].r;
+      picked = eraGated[0].c;
+      fallbackReason = "era_relaxed";
+    }
+
+    // L4: リプレイ（過去ログから。LLM/検索不要）
+    if (!resolved) {
+      try {
+        const logs = await listSegments(300, undefined).catch(() => listSegments(300, sessionId));
+        const pick = pickReplay(logs, history, { avoidJapanese: !!driftNote });
+        if (pick) {
+          resolved = {
+            uri: pick.uri,
+            title: pick.title,
+            artist: pick.artist,
+            artists: [pick.artist],
+            durationMs: pick.durationMs,
+            year: pick.year,
+            album: pick.album,
+            reissue: false,
+            artistExact: true,
+            titleExact: true,
+          };
+          picked = { title: pick.title, artist: pick.artist, why: "replay" };
+          source = "replay";
+          fallbackReason = fallbackReason ?? "replay";
+        }
+      } catch (e) {
+        console.error("replay layer failed", e);
+      }
+    }
+
+    // L5: 種曲（初回セッションの安全網）。1周目は年代ゲートを守り、全滅時のみ2周目で無視
+    if (!resolved) {
+      for (const respectEra of [true, false]) {
+        if (resolved) break;
+        for (const seed of shuffled(seedTracks)) {
+          if (historyKeys.has(normKey(seed.title, seed.artist))) continue;
+          if (cooldownArtists.has(normalizeName(seed.artist))) continue;
+          if (driftNote && (hasJapaneseScript(seed.title) || hasJapaneseScript(seed.artist))) continue;
+          const r = await resolveTrack({ ...seed, why: "seed" }, token);
+          if (!r) continue;
+          if (respectEra && eraRange) {
+            const blocked = r.reissue ? eraRange.minYear != null : !yearInRange(r.year, eraRange);
+            if (blocked) continue;
+          }
+          resolved = r;
+          picked = { ...seed, why: "seed" };
+          source = "seed";
+          fallbackReason = fallbackReason ?? (respectEra ? "seed" : "seed_unconditional");
+          break;
+        }
       }
     }
 
     if (!resolved || !picked) {
-      return Response.json(
-        { ok: false, error: "no track resolved" },
-        { status: 503 },
-      );
+      // ここに来るのはSpotify検索自体が落ちている場合のみ（＝再生も不可能な状況）
+      return Response.json({ ok: false, error: "no track resolved" }, { status: 503 });
+    }
+    const final: ResolvedTrack = resolved;
+    const finalPick: Candidate = picked;
+
+    // ---- ナレーション（失敗しても止めない: 定型文で続行） ----
+    let narration: string;
+    try {
+      narration = await buildNarration({
+        next: { title: final.title, artist: final.artist, year: final.year, album: final.album },
+      });
+    } catch (e) {
+      console.error("buildNarration failed, using template", e);
+      narration = `${final.artist}${final.year ? `、${final.year}年` : ""}の「${final.title}」。`;
+    }
+    if (source === "replay") {
+      narration = `もう一度かけます。${final.artist}で「${final.title}」。`;
     }
 
-    // 4) ナレーション
-    const narration = await buildNarration({
-      next: { title: resolved.title, artist: resolved.artist, year: resolved.year, album: resolved.album },
-    });
-
-    // 5) QueueItem + ログ下書き
     const item: QueueItem = {
       id: `seg_${String(sessionId).slice(0, 8)}_${seq}`,
       seq,
       stateVersion: state.version,
       track: {
-        title: resolved.title,
-        artist: resolved.artist,
-        uri: resolved.uri,
-        durationMs: resolved.durationMs,
-        year: resolved.year,
-        album: resolved.album,
+        title: final.title,
+        artist: final.artist,
+        uri: final.uri,
+        durationMs: final.durationMs,
+        year: final.year,
+        album: final.album,
       },
       narration,
-      candidateWhy: picked.why ?? "",
-      resolveMeta: {
-        artistExact: resolved.artistExact,
-        titleExact: resolved.titleExact,
-      },
+      candidateWhy: finalPick.why ?? "",
+      resolveMeta: { artistExact: final.artistExact, titleExact: final.titleExact },
       status: "queued",
+      source,
     };
+
+    const uid = (await cookies()).get("sp_uid")?.value ?? null;
 
     const log: SegmentLog = {
       ...item,
       sessionId,
+      userId: uid,
       createdAt: new Date().toISOString(),
       playedAt: null,
       feedback: { rating: null, memo: "" },
       conditionSnapshot: state,
       policySnapshot: policy.directive,
       codeVersion: CODE_VERSION,
+      fallbackReason,
+      driftBreak,
+      judgeRejected: judgeRejectedTotal,
     };
 
     await appendSegment(sessionId, log);

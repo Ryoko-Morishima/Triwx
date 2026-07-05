@@ -1,7 +1,12 @@
 // src/app/api/tts/route.ts — 高音質ナレーション音声（OpenAI TTS）
 // 失敗時はクライアント側がブラウザTTSにフォールバックする
+import { getAccessToken } from "@/server/spotifyAuth";
+
 export async function POST(req: Request) {
   try {
+    if (!(await getAccessToken())) {
+      return new Response("not authed", { status: 401 });
+    }
     const { text } = await req.json();
     if (!text || typeof text !== "string") {
       return new Response("text required", { status: 400 });

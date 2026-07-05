@@ -17,14 +17,19 @@ export type QueueItem = {
   candidateWhy: string;
   resolveMeta: { artistExact: boolean; titleExact: boolean };
   status: "queued" | "playing" | "played" | "skipped";
+  source?: "ai" | "replay" | "seed"; // どの層で選ばれたか
 };
 
 export type SegmentLog = QueueItem & {
   sessionId: string;
+  userId?: string | null;
   createdAt: string;
   playedAt: string | null;
   feedback: { rating: "good" | "ok" | "bad" | null; memo: string };
   conditionSnapshot: StationState;
   policySnapshot: string;
   codeVersion: string;
+  fallbackReason?: string | null; // era_relaxed / replay / seed 等
+  driftBreak?: boolean; // 言語ドリフト是正が発動した補充か
+  judgeRejected?: number; // 審査パスで落ちた候補数
 };

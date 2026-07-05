@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 木の筐体 -->
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#2a211b" stroke="#4a3b2d" stroke-width="2"/>
+  <!-- ランプ -->
+  <circle cx="49" cy="13" r="3.2" fill="#e8a33d"/>
+  <!-- ロゴの点(左上のアクセント) -->
+  <rect x="12" y="10.5" width="14" height="4" rx="2" fill="#c9a86a"/>
+  <!-- クリームの文字盤 -->
+  <rect x="9" y="22" width="46" height="30" rx="5" fill="#efe6d0" stroke="#b3a184" stroke-width="1.5"/>
+  <!-- 目盛り -->
+  <line x1="14" y1="38" x2="50" y2="38" stroke="#8c6f4a" stroke-width="2"/>
+  <line x1="18" y1="33" x2="18" y2="38" stroke="#b3a184" stroke-width="1.6"/>
+  <line x1="25" y1="35" x2="25" y2="38" stroke="#b3a184" stroke-width="1.6"/>
+  <line x1="32" y1="33" x2="32" y2="38" stroke="#b3a184" stroke-width="1.6"/>
+  <line x1="46" y1="33" x2="46" y2="38" stroke="#b3a184" stroke-width="1.6"/>
+  <!-- 赤い針 -->
+  <line x1="39" y1="27" x2="39" y2="44" stroke="#c0392b" stroke-width="2.6"/>
+</svg>

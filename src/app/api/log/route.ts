@@ -1,8 +1,27 @@
 // src/app/api/log/route.ts — セグメントログの追記・パッチ・取得
-import { appendSegment, patchSegment } from "@/logs/store";
+import { appendSegment, patchSegment, listSegments } from "@/logs/store";
+import { getAccessToken } from "@/server/spotifyAuth";
+
+async function requireAuth(): Promise<boolean> {
+  return !!(await getAccessToken());
+}
+
+export async function GET(req: Request) {
+  if (!(await requireAuth())) {
+    return Response.json({ ok: false, error: "not authed" }, { status: 401 });
+  }
+  const url = new URL(req.url);
+  const limit = Number(url.searchParams.get("limit") ?? 200);
+  const sessionId = url.searchParams.get("sessionId") ?? undefined;
+  const segments = await listSegments(Number.isFinite(limit) ? limit : 200, sessionId);
+  return Response.json({ ok: true, count: segments.length, segments });
+}
 
 export async function POST(req: Request) {
   try {
+    if (!(await requireAuth())) {
+      return Response.json({ ok: false, error: "not authed" }, { status: 401 });
+    }
     const body = await req.json();
     const { sessionId, segment } = body ?? {};
     if (!sessionId || !segment?.id) {
@@ -18,6 +37,9 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    if (!(await requireAuth())) {
+      return Response.json({ ok: false, error: "not authed" }, { status: 401 });
+    }
     const body = await req.json();
     const { sessionId, id, patch } = body ?? {};
     if (!sessionId || !id || !patch) {

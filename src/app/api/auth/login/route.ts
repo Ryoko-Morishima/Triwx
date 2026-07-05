@@ -2,7 +2,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHash, randomBytes } from "crypto";
-import { REDIRECT_URI, SCOPES } from "@/server/spotifyAuth";
+import { redirectUri, SCOPES } from "@/server/spotifyAuth";
 
 function base64url(buf: Buffer) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -32,7 +32,7 @@ export async function GET() {
     response_type: "code",
     client_id: clientId,
     scope: SCOPES,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri(),
     code_challenge_method: "S256",
     code_challenge: challenge,
   });

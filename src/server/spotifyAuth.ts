@@ -3,7 +3,17 @@ import { cookies } from "next/headers";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 
-export const REDIRECT_URI = "http://127.0.0.1:3000/api/auth/callback";
+export function baseUrl(): string {
+  return (process.env.APP_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+}
+
+export function redirectUri(): string {
+  return baseUrl() + "/api/auth/callback";
+}
+
+function isHttps(): boolean {
+  return baseUrl().startsWith("https://");
+}
 
 export const SCOPES = [
   "streaming",
@@ -17,7 +27,7 @@ type TokenSet = { accessToken: string; refreshToken: string; expiresAt: number }
 
 export async function saveTokens(t: TokenSet) {
   const store = await cookies();
-  const opts = { httpOnly: true, sameSite: "lax" as const, path: "/", secure: false };
+  const opts = { httpOnly: true, sameSite: "lax" as const, path: "/", secure: isHttps() };
   store.set("sp_access", t.accessToken, opts);
   store.set("sp_refresh", t.refreshToken, opts);
   store.set("sp_expires", String(t.expiresAt), opts);
@@ -68,7 +78,7 @@ export async function exchangeCode(code: string, verifier: string): Promise<Toke
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri(),
       client_id: clientId,
       code_verifier: verifier,
     }),

@@ -42,6 +42,31 @@ npm run dev
 - **高音質**（既定）: OpenAI TTS。自然な日本語。コストは1時間聴いて数円程度
   - `.env.local` の `OPENAI_TTS_VOICE`（既定 sage）/ `OPENAI_TTS_MODEL`（既定 gpt-4o-mini-tts）で声を変更可
 
+## Webに公開する（Vercel + Neon、無料枠でOK）
+
+**重要な前提**: Spotifyの規約変更（2026年2月）により、公開しても使えるのは
+Spotifyダッシュボードの許可リストに登録した**最大5アカウント**（自分含む・全員Premium必須）です。
+自分と身近な人で使う前提のデプロイです。
+
+### 手順（初回のみ・約15分）
+1. **GitHubにpush**（プライベートリポジトリでOK）
+2. **Vercel** (https://vercel.com) → Add New → Project → リポジトリをImport
+   - Environment Variables に以下を追加してDeploy:
+     - `SPOTIFY_CLIENT_ID`（ローカルと同じ）
+     - `OPENAI_API_KEY`
+     - `APP_BASE_URL` = `https://<プロジェクト名>.vercel.app`（デプロイ後に確定したURLを入れて再デプロイでも可）
+3. **ログ保存用DB**: Vercelのプロジェクト画面 → Storage → Create Database → **Neon (Postgres)** → Connect
+   - `DATABASE_URL` が自動で環境変数に追加される。テーブルは初回アクセス時に自動作成
+4. **Spotifyダッシュボード** (https://developer.spotify.com/dashboard) → 自分のアプリ → Settings:
+   - Redirect URIs に `https://<プロジェクト名>.vercel.app/api/auth/callback` を**追加**（ローカル用は残してよい）
+   - User Management: 使う人（最大5人・Premium必須）の名前とSpotifyメールを登録
+5. Vercelで **Redeploy** → `https://<プロジェクト名>.vercel.app` を開いて動作確認
+
+### ログについて
+- 本番: Neon Postgresの `segments` テーブルに保存（1曲=1行、評価・メモ込み）
+- ローカル: 従来どおり `data/sessions/*.ndjson`（DATABASE_URLを.env.localに入れれば本番と同じDBも使える）
+- 閲覧/エクスポート: ログイン済みブラウザで `/api/log?limit=200` を開くとJSONで取得できる
+
 ## 実装済み
 連続再生 / 曲間ナレーション（表示+読み上げ）/ 先読み2曲バッファ / 再生中の条件変更（次以降に反映・転調コメント）/ スキップ / 評価・メモ / セッションログ（冪等）/ アーティスト不一致の棄却
 
