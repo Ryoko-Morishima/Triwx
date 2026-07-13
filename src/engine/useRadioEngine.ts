@@ -141,13 +141,11 @@ export function useRadioEngine(
   }, [getVoiceMode]);
 
   // ---- 局名コール・インサート音声（番組演出。読み上げ設定から独立） ----
+  // 事前生成した固定音声ファイル（public/audio/station-id.mp3）を読み込むだけ。
+  // 毎回OpenAI TTSを叩かない（声を固定するため。取得失敗時のみブラウザTTSにフォールバック）
   const prefetchStationCall = useCallback(() => {
     if (stationCallRef.current) return;
-    stationCallRef.current = fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "ティーアールアイダブリューエックス、ステーション" }),
-    })
+    stationCallRef.current = fetch("/audio/station-id.mp3")
       .then((r) => (r.ok ? r.blob() : null))
       .catch(() => null);
   }, []);
