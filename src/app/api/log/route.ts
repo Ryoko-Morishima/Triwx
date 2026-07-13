@@ -1,5 +1,6 @@
 // src/app/api/log/route.ts — セグメントログの追記・パッチ・取得
 import { appendSegment, patchSegment, listSegments } from "@/logs/store";
+import { computeDiversityStats } from "@/logs/stats";
 import { getAccessToken } from "@/server/spotifyAuth";
 
 async function requireAuth(): Promise<boolean> {
@@ -14,6 +15,10 @@ export async function GET(req: Request) {
   const limit = Number(url.searchParams.get("limit") ?? 200);
   const sessionId = url.searchParams.get("sessionId") ?? undefined;
   const segments = await listSegments(Number.isFinite(limit) ? limit : 200, sessionId);
+
+  if (url.searchParams.get("stats") === "1") {
+    return Response.json({ ok: true, stats: computeDiversityStats(segments) });
+  }
   return Response.json({ ok: true, count: segments.length, segments });
 }
 
