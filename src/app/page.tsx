@@ -13,6 +13,9 @@ import {
   getCard,
   sliders,
   getSliderBand,
+  conflictsWith,
+  MAX_PERSONALITY_CARDS,
+  MAX_REGION_CARDS,
   type SliderId,
 } from "@/pipeline/definitions";
 import type { StationState } from "@/pipeline/core";
@@ -21,12 +24,6 @@ import { useRadioEngine, type VoiceMode } from "@/engine/useRadioEngine";
 const defaultSliders = Object.fromEntries(
   sliders.map((s) => [s.id, s.defaultValue]),
 ) as Record<SliderId, number>;
-
-// 同時に成立しない状況カードの排他グループ（選ぶと同グループの既選択と入れ替わる）
-const exclusiveGroups: string[][] = [
-  ["morning", "afternoon", "dusk", "midnight"], // 時間帯
-  ["rain", "sunny_holiday"], // 天気
-];
 
 const cardGroups: { key: string; label: string; ids: string[] }[] = [
   { key: "time", label: "時間・天気", ids: moodCards.filter((c) => c.group === "time").map((c) => c.id) },
@@ -109,13 +106,19 @@ export default function Page() {
         bumpState(next, sliderValues);
         return next;
       }
-      // 排他グループ内の既選択は入れ替える（例: 昼下がり→夜更け）
-      const exclusive = exclusiveGroups.find((g) => g.includes(id));
-      let base = exclusive ? prev.filter((c) => !exclusive.includes(c)) : prev;
 
       const isRegion = isRegionCard(id);
+      // ことば・地域カードは1枚のみ（選ぶと既存の地域カードと差し替わる）
+      let base = isRegion ? prev.filter((c) => !isRegionCard(c)) : prev;
+
+      // 性格カードの排他ペア（doze×dance 等）は既選択側を自動で外す
+      if (!isRegion) {
+        const conflicts = conflictsWith(id, base);
+        if (conflicts.length) base = base.filter((c) => !conflicts.includes(c));
+      }
+
       const sameGroupCount = base.filter((c) => isRegionCard(c) === isRegion).length;
-      const limit = isRegion ? 2 : 3;
+      const limit = isRegion ? MAX_REGION_CARDS : MAX_PERSONALITY_CARDS;
       if (sameGroupCount >= limit) {
         bumpState(base === prev ? prev : base, sliderValues);
         return base === prev ? prev : base;

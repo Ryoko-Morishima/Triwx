@@ -6,6 +6,7 @@
 // 種曲: ログが空の初回セッション用の最終安全網。実在が確実な有名曲。
 
 import type { SegmentLog } from "@/logs/schema";
+import { isRegionCard } from "@/pipeline/definitions";
 
 export type ReplayPick = {
   title: string;
@@ -20,7 +21,12 @@ export type ReplayPick = {
 export function pickReplay(
   logs: SegmentLog[],
   exclude: { title: string; artist: string }[],
-  opts: { rand?: () => number; avoidJapanese?: boolean } = {},
+  opts: {
+    rand?: () => number;
+    avoidJapanese?: boolean;
+    regionCard?: string | null; // 変更7c: 現在の地域カード。元の再生時と不一致なら注入しない
+    personalityCards?: string[]; // 現在の性格カード。可能なら主軸が重なるものを優先（ソフト）
+  } = {},
 ): ReplayPick | null {
   const rand = opts.rand ?? Math.random;
   const excludeKey = new Set(
@@ -35,6 +41,11 @@ export function pickReplay(
     const key = `${s.track.title}`.toLowerCase() + "/" + `${s.track.artist}`.toLowerCase();
     if (excludeKey.has(key)) return false;
     if (opts.avoidJapanese && (JP_SCRIPT.test(s.track.title) || JP_SCRIPT.test(s.track.artist))) return false;
+    // 変更7c: 地域カード指定時は、元の再生時のconditionSnapshotが同じ地域でなければ注入しない
+    if (opts.regionCard) {
+      const origRegion = (s.conditionSnapshot?.cards ?? []).find((c) => isRegionCard(c)) ?? null;
+      if (origRegion !== opts.regionCard) return false;
+    }
     return true;
   });
 
@@ -43,7 +54,18 @@ export function pickReplay(
   // 好評価を優先、なければ再生済み、なければ何でも
   const good = usable.filter((s) => s.feedback?.rating === "good");
   const played = usable.filter((s) => s.status === "played");
-  const pool = good.length ? good : played.length ? played : usable;
+  let pool = good.length ? good : played.length ? played : usable;
+
+  // 可能なら性格カードの主軸も照合（ソフト: 重なりが最大のものだけに絞る）
+  if (opts.personalityCards && opts.personalityCards.length > 0 && pool.length > 1) {
+    const overlapCount = (s: SegmentLog) => {
+      const orig = new Set((s.conditionSnapshot?.cards ?? []).filter((c) => !isRegionCard(c)));
+      return opts.personalityCards!.filter((c) => orig.has(c)).length;
+    };
+    const scored = pool.map((s) => ({ s, n: overlapCount(s) }));
+    const maxN = Math.max(...scored.map((x) => x.n));
+    if (maxN > 0) pool = scored.filter((x) => x.n === maxN).map((x) => x.s);
+  }
 
   const s = pool[Math.floor(rand() * pool.length)];
   return {

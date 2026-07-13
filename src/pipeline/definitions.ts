@@ -11,34 +11,32 @@ export type MoodCard = {
   group?: "time" | "scene" | "mood"; // UI表示用の仕切り（選曲ロジックには不使用）
 };
 
+// 性格カード（時間・シーン・雰囲気）: 選択上限 MAX_PERSONALITY_CARDS（互いに椅子取りゲームをする軸）。
+// 変更9(tasks/triwx-revision-spec.md)で20→13枚に棚卸し。削除したカードの情景・感情は
+// 無選択（自由に選んでよい）か、heat/textureスライダー、または近縁カードに吸収される設計。
 export const moodCards: MoodCard[] = [
   // ---- 時間・天気 ----
-  { id: "morning", group: "time", label: "朝", promptText: "一日のはじまりの澄んだ空気。軽やかで清潔感のある音。重すぎない。" },
-  { id: "afternoon", group: "time", label: "昼下がり", promptText: "午後のゆるんだ時間。力の抜けたミッドテンポ、日だまりのような音色。" },
-  { id: "dusk", group: "time", label: "夕暮れ", promptText: "昼と夜の境目。オレンジ色の光のような、少し感傷的で美しい曲。" },
-  { id: "midnight", group: "time", label: "夜更け", promptText: "深夜の空気。音数が少なめ、残響、静けさの中の親密さ。BPMは控えめでよい。" },
+  { id: "morning", group: "time", label: "朝", promptText: "朝の情景を持つ曲。目覚め、朝の光、始まり、出かける前の時間——世界観が「朝」または「一日の始まり」を描いていること。夜の情景・深夜の空気を持つ曲は、音が軽やかでも不可。重厚・壮大すぎる曲は朝に合わない。" },
+  { id: "midnight", group: "time", label: "夜更け", promptText: "夜更けの情景を持つ曲。夜の街、ネオン、月、終電後、ひとりの部屋、バーの片隅——歌詞・タイトル・曲の世界観が「夜」を描いていることが第一条件。アレンジの静かさは条件ではない。静かでも昼や野外の情景の曲（牧歌的フォーク、青春讃歌、朝の歌）は不可。夜の情景があれば、音数が多い曲やグルーヴのある曲でもよい。" },
   { id: "rain", group: "time", label: "雨", promptText: "雨の日の質感。しっとりした音像、内省、窓の外を眺めるような距離感。" },
-  { id: "sunny_holiday", group: "time", label: "晴れた休日", promptText: "予定のない晴れた日の開放感。屋外の光を感じる、気持ちのいい曲。" },
+  { id: "summer", group: "time", label: "夏", promptText: "夏の情景。強い日差し、暑さ、開放感——都会のアスファルトの熱気でも、波打ち際の解放感でも、蝉と花火の湿った夏でも、季節としての夏を描いていればよい。国やジャンルを問わず、“夏”という季節感を持つ曲。" },
   // ---- シーン ----
   { id: "drive", group: "scene", label: "ドライブ", promptText: "走行感のあるグルーヴ。一定のリズム、前に進む推進力、風景が流れる感じ。" },
   { id: "focus", group: "scene", label: "作業・集中", promptText: "集中を妨げない曲。歌が主張しすぎない、または器楽中心。一定の質感が続く。" },
-  { id: "kitchen", group: "scene", label: "料理・家事", promptText: "手を動かしながら聴いて楽しい曲。軽快なリズム、鼻歌を誘うメロディ。" },
-  { id: "gathering", group: "scene", label: "集い", promptText: "人が集まる場のBGM。会話を邪魔しない華やかさ、機嫌のいいグルーヴ。" },
   // ---- 気分・質感 ----
   { id: "dance", group: "mood", label: "踊れる", promptText: "ビートで体を動かさせる曲。ダンスミュージック、ファンク、ディスコ、ハウス、アフロビート、ダンサブルなポップ/R&Bなど。テンポが速いだけのロックや、ビートの弱いギターポップは不可。" },
-  { id: "uplift", group: "mood", label: "高揚", promptText: "気分が上がっていく感じ。開放感のあるコーラスやビルドアップ、ただし騒がしすぎない。" },
   { id: "doze", group: "mood", label: "まどろみ", promptText: "眠りに落ちる手前の心地よさ。アンビエント寄り、柔らかい輪郭、急な展開がない曲。" },
-  { id: "bittersweet", group: "mood", label: "切なさ", promptText: "甘さと痛みが同居する感情。マイナーとメジャーの揺らぎ、郷愁を誘うメロディ。" },
-  { id: "romance", group: "mood", label: "ロマンチック", promptText: "甘く親密なムード。ソウル、スロージャム、美しいバラードやボサノバ。" },
-  { id: "grit", group: "mood", label: "ざらつき", promptText: "歪んだギターや荒い録音の質感。ガレージ、パンク、オルタナ、生々しいエネルギー。" },
-  { id: "nostalgia", group: "mood", label: "ノスタルジー", promptText: "懐かしさ。録音の質感やアレンジに時代の匂いがある曲。世代の記憶に触れる感じ。" },
-  { id: "city", group: "mood", label: "都会", promptText: "都市の夜景や雑踏の洗練。シティポップ、ネオソウル、洒脱で少しクールな質感。" },
-  { id: "nature", group: "mood", label: "自然", promptText: "屋外の開けた空気。アコースティックな手触り、土や光を感じるオーガニックな音。" },
+  { id: "grit", group: "mood", label: "ざらつき", promptText: "ざらついた質感。歪んだギター、荒い録音、生々しいエネルギー。歪みがなくても、録音の生々しさや非ポップスな手触り（ローファイ、ガレージ的なラフさ、オルタナのカバー等）があれば適合。クリーンに整音された美しいフォークロックの名曲（例: Harvest Moon的なもの）は、名曲でも不適合。ジャンルの指定ではなく質感の軸であり、ブルースの生々しさ、初期ヒップホップの粗さ、メタルの轟音など、ジャンルを横断する。" },
   { id: "experimental", group: "mood", label: "実験的", promptText: "定型から外れる面白さ。変わった構成・音色・リズム。ただし聴きやすさは完全には捨てない。" },
+  { id: "bittersweet", group: "mood", label: "切なさ", promptText: "甘さと痛みが同居する感情。マイナーとメジャーの揺らぎ、郷愁を誘うメロディ。夕暮れのような、昼と夜の境目の感傷も含む。" },
+  { id: "nostalgia", group: "mood", label: "ノスタルジー", promptText: "懐かしさ。録音の質感やアレンジに時代の匂いがある曲。世代の記憶に触れる感じ。" },
+  { id: "uplift", group: "mood", label: "高揚", promptText: "気分が上がっていく感じ。開放感のあるコーラスやビルドアップ、ただし騒がしすぎない。" },
 ];
 
 // ---- ことば・地域カード ----
 // 西洋音楽への偏りを崩すための独立カテゴリ。選択時は「厳守条件」として選曲AIに渡す。
+// 性格カードとは異なり組み合わせの妙味が薄い単なるフィルタのため、選択上限は MAX_REGION_CARDS(=1枚)。
+// 変更9(tasks/triwx-revision-spec.md)で7→12枚に拡充。
 
 export const regionCards: MoodCard[] = [
   {
@@ -57,7 +55,7 @@ export const regionCards: MoodCard[] = [
     id: "asia",
     label: "アジア",
     promptText:
-      "日本・韓国以外のアジア圏（台湾、香港、タイ、インドネシア、フィリピン、ベトナム、インドなど）のアーティストの曲だけを選ぶ。",
+      "日本・韓国以外の東・東南アジア圏（台湾、香港、タイ、インドネシア、フィリピン、ベトナムなど）のアーティストの曲だけを選ぶ。",
   },
   {
     id: "latin",
@@ -75,13 +73,43 @@ export const regionCards: MoodCard[] = [
     id: "europe",
     label: "欧州（非英語）",
     promptText:
-      "英語圏以外のヨーロッパ（フランス、ドイツ、イタリア、北欧、東欧など）のアーティストの、主に現地語で歌われる曲だけを選ぶ。",
+      "英語圏（イギリスを除く）以外のヨーロッパ（フランス、ドイツ、イタリア、北欧、東欧など）のアーティストの、主に現地語で歌われる曲だけを選ぶ。",
   },
   {
     id: "world_trip",
     label: "世界を旅する",
     promptText:
       "毎回ちがう意外な国のアーティストから選ぶ。英語圏と日本の有名曲は避ける。まだ流れていない国を優先し、その国ならではの音を持つ曲を選ぶ。",
+  },
+  {
+    id: "india",
+    label: "インド",
+    promptText:
+      "インドのアーティストの曲だけを選ぶ。ボリウッド、インド古典（ヒンドゥスターニー/カルナータカ）、現代インディー、バングラ、スーフィー音楽まで幅広く。",
+  },
+  {
+    id: "middle_east",
+    label: "中東",
+    promptText:
+      "中東（アラビア語圏、ペルシャ語圏、トルコ、イスラエルなど）のアーティストの曲だけを選ぶ。伝統的なマカーム音楽から現代のインディー・ポップまで。",
+  },
+  {
+    id: "caribbean",
+    label: "カリブ海",
+    promptText:
+      "カリブ海地域（ジャマイカ、トリニダード、ハイチなど英語・フランス語圏）のアーティストの曲だけを選ぶ。レゲエ、ダンスホール、ソカ、カリプソ、ズークなど。",
+  },
+  {
+    id: "uk",
+    label: "イギリス",
+    promptText:
+      "イギリスのアーティストの曲だけを選ぶ。ブリットポップ、UKガラージ、グライム、北部ソウル、フォークリバイバルなど、島国ならではの内向きな進化を持つ音楽。",
+  },
+  {
+    id: "usa",
+    label: "アメリカ",
+    promptText:
+      "アメリカのアーティストの曲だけを選ぶ。ソウル、ヒップホップ、カントリー、ブルース、インディーロックなど地域ごとに枝分かれした大陸規模の音楽伝統。",
   },
 ];
 
@@ -93,9 +121,56 @@ export function isRegionCard(id: string): boolean {
   return regionCards.some((c) => c.id === id);
 }
 
+// ---- 選択上限・排他（単一ソース。UIの選択制御が参照する） ----
+
+export const MAX_PERSONALITY_CARDS = 2; // 時間・シーン・雰囲気カードの合計
+export const MAX_REGION_CARDS = 1; // ことば・地域カードの合計
+
+// 性格カード内で物理的に両立しない組み合わせ（時間帯グループの排他は
+// MAX_PERSONALITY_CARDS=2の上限で実質的に上位互換されるため廃止）
+export const exclusionPairs: [string, string][] = [
+  ["doze", "dance"],
+  ["doze", "grit"],
+  ["doze", "uplift"],
+];
+
+/** idを選んだときに自動で外すべき、選択済みカードのidを返す */
+export function conflictsWith(id: string, selected: string[]): string[] {
+  const out = new Set<string>();
+  for (const [a, b] of exclusionPairs) {
+    if (a === id && selected.includes(b)) out.add(b);
+    if (b === id && selected.includes(a)) out.add(a);
+  }
+  return [...out];
+}
+
+// ---- comboHints（化学反応する組み合わせの追加解釈） ----
+// 網羅しない。LLMの自然解釈が外しそうな組だけ少数登録する。
+
+export const comboHints: { cards: string[]; promptText: string }[] = [
+  {
+    cards: ["midnight", "dance"],
+    promptText:
+      "深夜のクラブ・フロアの時間帯。ディープハウス、テクノ、夜が深まるほど効くグルーヴ。昼のパーティーチューンではなく、暗さと快楽が同居する曲。",
+  },
+  {
+    cards: ["bittersweet", "dance"],
+    promptText:
+      "泣きながら踊る音楽。切なさと踊れるビートの同居（Robyn的な様式、本来のディスコが持っていた感情）。切ないミッドテンポに丸めない。",
+  },
+  {
+    cards: ["rain", "dance"],
+    promptText: "雨の都市のダンスミュージック。UKガラージ、ダブステップ、しっとりした質感とビートの共存。",
+  },
+  {
+    cards: ["morning", "bittersweet"],
+    promptText: "徹夜明けの朝、昨夜を引きずった朝。清潔な朝ではなく、カムダウンの時間。",
+  },
+];
+
 // ---- スライダー ----
 
-export type SliderId = "era" | "heat" | "popularity";
+export type SliderId = "era" | "heat" | "popularity" | "texture";
 
 export type SliderBand = {
   min: number;
@@ -154,7 +229,21 @@ export const sliders: SliderDef[] = [
       { min: 20, max: 39, label: "やや深掘り", promptText: "大ヒット曲・代表曲は避けめにし、アルバム曲や準知名度の曲を多めに混ぜる。" },
       { min: 40, max: 60, label: "指定なし", promptText: "人気度は自由。ただし誰もが知る大定番ばかりに寄せず、知名度に幅を持たせる。" },
       { min: 61, max: 80, label: "やや定番", promptText: "広く知られた曲を中心に選ぶ。" },
-      { min: 81, max: 100, label: "定番", promptText: "誰もが知る有名曲・代表曲を中心に選ぶ。" },
+      { min: 81, max: 100, label: "定番", promptText: "誰もが知る有名曲・代表曲を中心に選ぶ。ただし雰囲気カードとの適合が最優先。適合する定番曲が尽きたら、知名度を下げてでも雰囲気を守る。" },
+    ],
+  },
+  {
+    id: "texture",
+    label: "質感",
+    leftLabel: "アコースティック",
+    rightLabel: "エレクトロニック",
+    defaultValue: 50,
+    bands: [
+      { min: 0, max: 19, label: "アコースティック", promptText: "生楽器中心。ギター、ピアノ、弦、生ドラムなど、電子的な加工が最小限の音。シンセ・打ち込み・エレクトロニックプロダクションは不可。" },
+      { min: 20, max: 39, label: "ややアコースティック", promptText: "生楽器を中心にしつつ、控えめな電子的処理を許容。" },
+      { min: 40, max: 60, label: "指定なし", promptText: "質感は自由。" },
+      { min: 61, max: 80, label: "ややエレクトロニック", promptText: "シンセや打ち込みを中心にしつつ、生楽器の要素も許容。" },
+      { min: 81, max: 100, label: "エレクトロニック", promptText: "シンセ・打ち込み・電子的プロダクションが主体の曲。生楽器主体のアコースティックな演奏は不可。" },
     ],
   },
 ];
@@ -180,29 +269,15 @@ export function getSliderBand(id: SliderId, value: number): SliderBand {
   return def.bands.find((b) => v >= b.min && v <= b.max) ?? def.bands[2];
 }
 
+const CONDITION_PRIORITY_SECTION = [
+  "【条件が両立しないとき】",
+  "- 優先順位は「ことば・地域 > 雰囲気カード > スライダー」。",
+  "- 適合曲が見つからない場合、人気度→年代の順でスライダー条件を緩めてよい。雰囲気カードは緩めない。",
+  "- 条件を緩めた場合は、選曲理由にどの条件を緩めたかを明記する。",
+  "- 選曲理由には、その曲が実際に持つ特徴だけを書く。条件に合わない曲を合うと偽って正当化しない。",
+].join("\n");
+
 /** 卓の状態を、選曲AI用の条件テキストにまとめる（単一ソースからの導出） */
-/** 審査パス用: カード条件と、端に振られたスライダー条件だけを抽出する。
-    人気度は含めない（「知らない曲=不可」との組み合わせでデッドロックを起こすため）。
-    年代はコードのゲートで検証済みのため含めない。 */
-export function describeJudgeConditions(state: {
-  cards: string[];
-  sliders: Record<SliderId, number>;
-}): string {
-  const lines: string[] = [];
-
-  for (const id of state.cards) {
-    const c = getCard(id);
-    if (c) lines.push(`- ${c.label}: ${c.promptText}`);
-  }
-
-  const heat = getSliderBand("heat", state.sliders?.heat ?? 50);
-  if (heat.label === "クール" || heat.label === "ホット") {
-    lines.push(`- 温度感（${heat.label}）: ${heat.promptText}`);
-  }
-
-  return lines.join("\n");
-}
-
 export function describeState(state: {
   cards: string[];
   sliders: Record<SliderId, number>;
@@ -231,11 +306,19 @@ export function describeState(state: {
   ];
 
   if (regionLines.length) {
-    sections.push(
-      `【ことば・地域（最優先・必ず守る）】\n${regionLines.join("\n")}\n- 複数指定時は交互に、または自然に行き来してよいが、指定外の地域は選ばない`,
-    );
+    sections.push(`【ことば・地域（最優先・必ず守る）】\n${regionLines.join("\n")}`);
   }
 
   sections.push(`【調整スライダー】\n${sliderLines.join("\n")}`);
+
+  const activeCombo = comboHints.filter((h) => h.cards.every((id) => state.cards.includes(id)));
+  if (activeCombo.length) {
+    sections.push(
+      `【組み合わせの解釈】\n${activeCombo.map((h) => `- ${h.promptText}`).join("\n")}`,
+    );
+  }
+
+  sections.push(CONDITION_PRIORITY_SECTION);
+
   return sections.join("\n\n");
 }

@@ -1,21 +1,23 @@
 // src/app/api/queue/fill/route.ts — キュー補充API（多層フォールバック版）
 //
 // 「放送を止めない」ための層構造。上から順に試し、最初に成功した層を使う:
-//   L1: 通常生成（候補4件×2バッチ、年代ゲート厳守）
-//   L2: 拡大バッチ（候補6件、実在確実な曲を強調）
+//   L1: 通常生成（自己判定つき、頭出し4曲×2バッチ、年代ゲート厳守）
+//   L2: 拡大バッチ（頭出し6曲、実在確実な曲を強調）
 //   L3: 年代ゲートの緊急緩和（ゲートで棄却済みの解決済み曲から、レンジに最も近い年を救済）
 //   L4: リプレイ（過去ログの好評価曲を再放送。LLM/検索不要）
 //   L5: 種曲（初回セッション用の安全網）
 // アーティスト不一致の棄却（品質の生命線）はどの層でも緩めない。
 // どの層で成立したかは source / fallbackReason としてログに残す。
+// 候補の自己判定（カード適合の検品）はgenerateCandidates内で完結する（別役の審査パスは廃止。tasks/triwx-revision-spec.md 変更6/9-8）。
 import { getAccessToken } from "@/server/spotifyAuth";
+import { getModelName } from "@/server/openai";
 import { cookies } from "next/headers";
 import {
   generateCandidates,
-  judgeCandidates,
   resolveTrack,
   normalizeName,
   buildNarration,
+  PROMPT_VERSION,
   type Policy,
   type StationState,
   type Candidate,
@@ -23,7 +25,7 @@ import {
 } from "@/pipeline/core";
 import { appendSegment, listSegments } from "@/logs/store";
 import { getOrBuildPolicy, defaultPolicy } from "@/server/policyCache";
-import { eraYearRange, yearInRange, isRegionCard, describeState, describeJudgeConditions } from "@/pipeline/definitions";
+import { eraYearRange, yearInRange, isRegionCard, describeState } from "@/pipeline/definitions";
 import { pickReplay, seedTracks, detectLanguageDrift, hasJapaneseScript } from "@/pipeline/fallback";
 import type { QueueItem, SegmentLog } from "@/logs/schema";
 
@@ -104,15 +106,13 @@ export async function POST(req: Request) {
       history.slice(-10).map((h) => normalizeName(h.artist)),
     );
 
-    // 審査パス用の条件（カード+極値の温度感のみ。人気度・年代は含めない）
-    const judgeConditions = describeJudgeConditions(state);
-
     let resolved: ResolvedTrack | null = null;
     let picked: Candidate | null = null;
     let source: "ai" | "replay" | "seed" = "ai";
     let fallbackReason: string | null = null;
     const driftBreak = !!driftNote;
     let judgeRejectedTotal = 0;
+    const judgeRejectionsAll: { title: string; artist: string; reason: string }[] = [];
 
     // ゲートで棄却した解決済み曲を控えておく（L3で救済に使う）
     const eraGated: { r: ResolvedTrack; c: Candidate }[] = [];
@@ -120,7 +120,8 @@ export async function POST(req: Request) {
     const tryCandidates = async (count: number, emphasizeReal: boolean) => {
       let candidates: Candidate[] = [];
       try {
-        candidates = await generateCandidates({
+        // 変更6/9-8: 審査は別役のLLMパスではなく、生成コール内の自己判定で完結させる
+        const result = await generateCandidates({
           policy: emphasizeReal
             ? { ...policy!, directive: policy!.directive + "\n（注意: 確実に実在する、よく知られた曲を優先すること）" }
             : policy!,
@@ -130,16 +131,12 @@ export async function POST(req: Request) {
           count,
           driftNote,
         });
+        candidates = result.passed;
+        judgeRejectedTotal += result.rejected.length;
+        judgeRejectionsAll.push(...result.rejected);
       } catch (e) {
         console.error("generateCandidates failed", e);
         return;
-      }
-
-      // 検品: 審査すべき条件（カード or 極値の温度感）があるときだけ審査パスを通す
-      if (judgeConditions.length > 0 && candidates.length > 0) {
-        const before = candidates.length;
-        candidates = await judgeCandidates({ conditionsText: judgeConditions, candidates });
-        judgeRejectedTotal += before - candidates.length;
       }
 
       for (const c of candidates) {
@@ -197,7 +194,14 @@ export async function POST(req: Request) {
     if (!resolved) {
       try {
         const logs = await listSegments(300, undefined).catch(() => listSegments(300, sessionId));
-        const pick = pickReplay(logs, history, { avoidJapanese: !!driftNote });
+        // 変更7c: 現在の地域カードと元の再生時のconditionSnapshotを照合し、不一致なら注入しない
+        const currentRegionCard = (state.cards ?? []).find((id) => isRegionCard(id)) ?? null;
+        const currentPersonalityCards = (state.cards ?? []).filter((id) => !isRegionCard(id));
+        const pick = pickReplay(logs, history, {
+          avoidJapanese: !!driftNote,
+          regionCard: currentRegionCard,
+          personalityCards: currentPersonalityCards,
+        });
         if (pick) {
           resolved = {
             uri: pick.uri,
@@ -298,6 +302,9 @@ export async function POST(req: Request) {
       fallbackReason,
       driftBreak,
       judgeRejected: judgeRejectedTotal,
+      judgeRejections: judgeRejectionsAll,
+      model: getModelName(),
+      promptVersion: PROMPT_VERSION,
     };
 
     await appendSegment(sessionId, log);

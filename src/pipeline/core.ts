@@ -7,6 +7,9 @@
 import { callJson } from "@/server/openai";
 import { describeState, type SliderId } from "@/pipeline/definitions";
 
+// 生成プロンプトのバージョンタグ（変更8: 効果測定のためログに残す）
+export const PROMPT_VERSION = "v9-self-judge";
+
 export type StationState = {
   version: number;
   cards: string[];
@@ -18,7 +21,12 @@ export type Policy = {
   directive: string; // 選曲方針（自然文）
 };
 
-export type Candidate = { title: string; artist: string; why: string };
+export type Candidate = {
+  title: string;
+  artist: string;
+  why: string;
+  expectedYear?: number | null; // 選曲AIが想定する原曲のリリース年（変更7b: 年ズレ検知用）
+};
 
 export type ResolvedTrack = {
   uri: string;
@@ -50,15 +58,25 @@ export async function buildPolicy(state: StationState): Promise<Policy> {
   return { stateVersion: state.version, directive: out.directive };
 }
 
-// ---- 候補生成 ----
+// ---- 候補生成（自己判定を内蔵） ----
+// かつては生成→別役の審査パス(LLM)の2段構成だったが、審査を厳しくしすぎて
+// 「知ってる曲=定番でNG、知らない曲=不明でNG」のデッドロックを起こした教訓（PROJECT.md §6）と、
+// 審査の却下回数と人間評価が無相関だった実測（judgeがカード適合ではなく形式条件しか見ていなかった）から、
+// 別役の審査パスは廃止。同一コール内で「候補を挙げる→各カードに照らして自己判定する→
+// 最も確からしいものだけ残す」まで完結させる（追加レイテンシはトークン分のみ）。
+
+export type GenerateCandidatesResult = {
+  passed: Candidate[]; // 自己判定を通過した候補（確信度の高い順、最大3件）
+  rejected: { title: string; artist: string; reason: string }[]; // 自己判定で落ちた候補（ログ用。変更8）
+};
 
 export async function generateCandidates(params: {
   policy: Policy;
-  stateText: string; // describeState()の生テキスト（カード・スライダー条件の厳守用）
+  stateText: string; // describeState()の生テキスト（カード・スライダー条件の厳守用。カード排他は上位で確定済み）
   lastTrack: { title: string; artist: string } | null;
-  count: number;
+  count: number; // 自己判定にかける前に頭の中で挙げる候補数の目安
   driftNote?: string | null; // 言語・地域の吸着を崩すための追加指示
-}): Promise<Candidate[]> {
+}): Promise<GenerateCandidatesResult> {
   const { policy, stateText, lastTrack, count, driftNote } = params;
 
   // 設計メモ: かつては「最近流れた曲」20件をプロンプトに入れていたが、
@@ -70,77 +88,39 @@ export async function generateCandidates(params: {
     ? `${lastTrack.title} / ${lastTrack.artist}`
     : "（アンカーなし。選曲条件の中心から自由に選ぶ）";
 
-  const out = await callJson<{ candidates: Candidate[] }>({
+  const out = await callJson<{
+    passed: Candidate[];
+    rejected: { title: string; artist: string; reason: string }[];
+  }>({
     system:
-      "あなたは連続ラジオの選曲家です。実在する楽曲のみを挙げてください。曲名とアーティスト名の組み合わせが正確であることが最重要です。" +
-      "自信のない組み合わせを出すくらいなら、確実に実在する別の曲を選んでください。" +
-      "選曲条件（カード・スライダー）は毎回の候補すべてに適用される現在の条件であり、直前までに流れた曲の傾向より常に優先される。" +
-      "「ことば・地域」の指定がある場合、全候補でそれを厳守する。指定がない場合は英語圏だけにも特定の言語圏だけにも偏らず、世界の音楽を視野に入れる。" +
-      "重要: 「前の曲からの接続」とは質感・温度・リズム・時代の空気のつながりのことであり、言語や国籍を引き継ぐことではない。" +
-      "禁止: 曲名や歌詞にカードの単語が入っているという理由で選ばないこと（例:「ドライブ」でタイトルにdrive/road/rideを含む曲を集める、「雨」でrainを含む曲を集める等）。カードはあくまで音の質感・気分の指定である。" +
-      `出力はJSONのみ: {"candidates": [{"title": "曲名（原語表記）", "artist": "アーティスト名（原語表記）", "why": "選んだ理由を一言"}]} を${count}件。` +
+      "あなたはラジオDJとして次の曲を選ぶ。実在する楽曲のみを挙げること。曲名とアーティスト名の組み合わせが正確であることが最重要。" +
+      "自信のない組み合わせを出すくらいなら、確実に実在する別の曲を選ぶこと。" +
+      "\n\n【選曲の原則】" +
+      "\n1. 雰囲気カードは「情景・感情」の指定であり、ジャンルの指定ではない。条件を満たすなら、どのジャンル・国・年代からでも選んでよい。定義文の例示はジャンルの範囲ではなく、軸がジャンルを横断することを示す見本である。" +
+      "\n2. 条件が両立しないときは【条件が両立しないとき】の優先順位に従う。" +
+      "\n3. 直近の流れと同じアーティスト・同じ質感が続いたら、条件の範囲内で意図的に離れた場所から選ぶ。" +
+      "\n4. 「前の曲からの接続」とは質感・温度・リズム・時代の空気のつながりのことであり、言語や国籍を引き継ぐことではない。" +
+      "\n5. 曲名や歌詞にカードの単語が入っているという理由だけで選ばないこと（例:「ドライブ」でタイトルにdrive/road/rideを含む曲を集める、「雨」でrainを含む曲を集める等）。" +
+      "\n\n【判定の較正例】" +
+      "\n「静かな曲」と「夜更けの曲」は別物である。風をあつめて（はっぴいえんど）は静かだが昼の情景であり midnight に不適。ブルー・ライト・ヨコハマは静かではないが夜の情景であり適合。判定は音の静かさではなく情景で行う。" +
+      "\n\n【手順】" +
+      `\nまず頭の中で候補を${count}曲挙げる。次に各候補を、提示されている雰囲気カード・地域カードの一枚ずつすべてに照らして自己判定する——その曲が実際に持つ情景・性格に基づいて判断する。全カードを満たす曲だけを合格とする。「合うと言えなくもない」程度の曲は不合格にする。よく知らない曲は、不合格にせず理由に「推測」と明記して合格にしてよい（無名曲は発見の源泉のため排除しない）。合格の中から実在の確実性が高い順に最大3件を出力し、不合格は自己判定で落ちたものをすべて理由つきで出力する。` +
+      '出力はJSONのみ: {"passed": [{"title": "曲名（原語表記）", "artist": "アーティスト名（原語表記）", "why": "実際の特徴に基づく合格理由", "expectedYear": 原曲のリリース年（西暦の数値、わからなければnull）}], "rejected": [{"title": "曲名", "artist": "アーティスト名", "reason": "不合格にした理由"}]}' +
       "候補同士は別のアーティストにすること。",
     user: [
       `【選曲条件（現在の卓の状態・厳守）】\n${stateText}`,
       `【選曲方針】\n${policy.directive}`,
       `【直前に流れた曲】\n${lastText}`,
       ...(driftNote ? [`【注意】${driftNote}`] : []),
-      "現在の選曲条件を最優先に、次の曲の候補を挙げてください。",
+      "現在の選曲条件を最優先に、次の曲を選んでください。",
     ].join("\n\n"),
     temperature: 0.9,
   });
 
-  return Array.isArray(out.candidates) ? out.candidates.slice(0, count) : [];
-}
-
-// ---- 候補の検品（審査パス） ----
-// 生成役は流れや多様性を考えて条件判定が甘くなるため、判定専任の審査役を分離する。
-// 条件に明確に合わない候補（例:「踊れる」指定でビートの弱いロック）を解決前に落とす。
-
-export type Verdict = { index: number; fits: boolean };
-
-export function applyVerdicts(
-  candidates: Candidate[],
-  verdicts: Verdict[] | null | undefined,
-): Candidate[] {
-  if (!Array.isArray(verdicts) || verdicts.length === 0) return candidates;
-  const fitSet = new Set(
-    verdicts.filter((v) => v && v.fits === true && Number.isInteger(v.index)).map((v) => v.index),
-  );
-  const passed = candidates.filter((_, i) => fitSet.has(i));
-  // 審査が全滅させた場合は空を返す（fill側が次のバッチへ進む）
-  return passed;
-}
-
-export async function judgeCandidates(params: {
-  conditionsText: string; // describeJudgeConditions()の出力（カード+極値温度のみ）
-  candidates: Candidate[];
-}): Promise<Candidate[]> {
-  const { conditionsText, candidates } = params;
-  if (candidates.length === 0) return candidates;
-
-  try {
-    const list = candidates
-      .map((c, i) => `${i}: ${c.title} / ${c.artist}`)
-      .join("\n");
-
-    const out = await callJson<{ verdicts: Verdict[] }>({
-      system:
-        "あなたは音楽番組の選曲審査員です。候補曲が条件に合っているかだけを判定します。" +
-        "その曲を知っていて、いずれかの条件に明確に外れる場合のみ fits: false。" +
-        "条件に合う場合、および曲をよく知らない・判断がつかない場合は fits: true（実在確認と重複排除は別工程が行うので、ここでは質感の明確な不適合だけを弾く）。" +
-        '出力はJSONのみ: {"verdicts": [{"index": 番号, "fits": true/false}]} を候補全件分。',
-      user: `【選曲条件】\n${conditionsText}\n\n【候補】\n${list}`,
-      temperature: 0.1,
-    });
-
-    const passed = applyVerdicts(candidates, out.verdicts);
-    return passed;
-  } catch (e) {
-    // 審査が落ちても放送は止めない: 無審査で通す
-    console.error("judgeCandidates failed, passing all", e);
-    return candidates;
-  }
+  return {
+    passed: Array.isArray(out.passed) ? out.passed.slice(0, 3) : [],
+    rejected: Array.isArray(out.rejected) ? out.rejected : [],
+  };
 }
 
 // ---- Spotify解決 ----
@@ -155,15 +135,25 @@ export function normalizeName(s: string): string {
     .trim();
 }
 
-const VERSION_MARKERS = /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal/i;
+// 変更7a: カラオケ/インスト/ライブ/リミックス等は原曲ではないため解決結果から弾く（ハード除外）。
+// 実績: 「青い山脈 - オリジナル・カラオケ」がjudge通過してbadになった
+// （normalizeNameがダッシュ以降を落とすため、この手のタイトルはtitleExact判定をすり抜けてしまう）。
+const VERSION_MARKERS =
+  /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal|カラオケ|インストゥルメンタル|インスト|ライブ|ライヴ|リミックス/i;
 const REISSUE_MARKERS = /remaster|reissue|anniversary|deluxe|expanded/i;
 
-/** バージョン選択スコア（小さいほど良い）。原曲を優先し、remix/live/cover等を強く避ける */
-export function scoreTrackVersion(rawTitle: string, albumName: string, titleExact: boolean): number {
+/** バージョン選択スコア（小さいほど良い）。原曲を優先する。
+    yearGap: 選曲AIが想定した年との差（変更7b）。大きくずれる盤は下げる（別盤の原盤があれば優先）。 */
+export function scoreTrackVersion(
+  rawTitle: string,
+  albumName: string,
+  titleExact: boolean,
+  yearGap: number | null = null,
+): number {
   let score = 0;
-  if (VERSION_MARKERS.test(rawTitle)) score += 10;
   if (REISSUE_MARKERS.test(rawTitle) || REISSUE_MARKERS.test(albumName)) score += 1;
   if (!titleExact) score += 0.5;
+  if (yearGap != null && yearGap > 10) score += 3;
   return score;
 }
 
@@ -204,15 +194,23 @@ export async function resolveTrack(
       if (!artistExact) continue;
 
       const rawTitle = String(t?.name ?? "");
+      // 変更7a: カラオケ/インスト/ライブ/リミックス等は原曲ではないため弾く（別バージョンを探し直す）
+      if (VERSION_MARKERS.test(rawTitle)) continue;
+
       const albumName = String(t?.album?.name ?? "");
       const titleExact = normalizeName(rawTitle) === normalizeName(candidate.title);
       const reissue = REISSUE_MARKERS.test(rawTitle) || REISSUE_MARKERS.test(albumName);
       const year = t?.album?.release_date
         ? Number(String(t.album.release_date).slice(0, 4)) || null
         : null;
+      // 変更7b: 選曲AIが想定した年と大きくずれる盤（別作品への誤解決の疑い）は下げる
+      const yearGap =
+        candidate.expectedYear != null && year != null
+          ? Math.abs(year - candidate.expectedYear)
+          : null;
 
       matches.set(t.uri, {
-        score: scoreTrackVersion(rawTitle, albumName, titleExact),
+        score: scoreTrackVersion(rawTitle, albumName, titleExact, yearGap),
         track: {
           uri: t.uri,
           title: rawTitle,
@@ -228,9 +226,9 @@ export async function resolveTrack(
       });
     }
 
-    // 1本目のクエリで「原曲」と呼べるもの（score<10）が取れていれば2本目は撃たない
-    const best = [...matches.values()].sort((a, b) => a.score - b.score)[0];
-    if (best && best.score < 10) break;
+    // バージョン文字列を含む結果はここまでで既に除外済みのため、
+    // 1本目のクエリで何か1件でも取れていれば「原曲と呼べるもの」であり、2本目は撃たない
+    if (matches.size > 0) break;
   }
 
   if (matches.size === 0) return null;

@@ -31,5 +31,8 @@ export type SegmentLog = QueueItem & {
   codeVersion: string;
   fallbackReason?: string | null; // era_relaxed / replay / seed 等
   driftBreak?: boolean; // 言語ドリフト是正が発動した補充か
-  judgeRejected?: number; // 審査パスで落ちた候補数
+  judgeRejected?: number; // 自己判定で落ちた候補数（変更8。旧: 別役審査パスの却下数）
+  judgeRejections?: { title: string; artist: string; reason: string }[]; // 変更8: 却下理由つき詳細
+  model?: string; // 変更8: 選曲に使ったモデル名
+  promptVersion?: string; // 変更8: 生成プロンプトのバージョンタグ
 };

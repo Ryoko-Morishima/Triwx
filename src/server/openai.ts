@@ -2,6 +2,11 @@
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
+// 変更8: ログにモデル名を残す（プロンプト効果とモデル効果の切り分け用）
+export function getModelName(): string {
+  return OPENAI_MODEL;
+}
+
 export async function callJson<T>(params: {
   system: string;
   user: string;
