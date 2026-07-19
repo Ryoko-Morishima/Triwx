@@ -11,6 +11,33 @@ export type MoodCard = {
   group?: "time" | "scene" | "mood"; // UI表示用の仕切り（選曲ロジックには不使用）
 };
 
+// 変更13続き: gritはtexture値に応じて説明文の重心を動的に変える。
+// 「電子的な例を後方に添えるだけ」の固定文言（変更13当初版）では、ギターへの
+// 言及が先に来ることで連想が強く残ってしまい、grit+texture=100でも実運用で
+// ギター中心の曲しか出ないことが確認された（2026-07-19実測、tasks/triwx-revision-spec.md 変更13参照）。
+// texture極端値のときは、電子的な説明を「主」・ギター的な説明を「例外」として
+// 前後を入れ替える（あるいは明示的に除外する）ことで、この連想を覆す設計にする。
+
+// texture <= 20（アコースティック優勢）: 従来通りギター/生楽器中心の説明（変更2のまま）
+const GRIT_ACOUSTIC_PROMPT_TEXT =
+  "ざらついた質感。歪んだギター、荒い録音、生々しいエネルギー。歪みがなくても、録音の生々しさや非ポップスな手触り（ローファイ、ガレージ的なラフさ、オルタナのカバー等）があれば適合。クリーンに整音された美しいフォークロックの名曲（例: Harvest Moon的なもの）は、名曲でも不適合。ジャンルの指定ではなく質感の軸であり、ブルースの生々しさ、初期ヒップホップの粗さ、メタルの轟音など、ジャンルを横断する。";
+
+// 20 < texture < 80（中間値）: 両論併記（変更13当初版。「効果なし」と判明した版だが、
+// 中間値では両方の解釈を許容する現行の書き方自体は問題ないため、そのまま維持する）
+const GRIT_NEUTRAL_PROMPT_TEXT =
+  "ざらついた質感。歪んだギター、荒い録音、生々しいエネルギー。歪みがなくても、録音の生々しさや非ポップスな手触り（ローファイ、ガレージ的なラフさ、オルタナのカバー等）があれば適合。クリーンに整音された美しいフォークロックの名曲（例: Harvest Moon的なもの）は、名曲でも不適合。ジャンルの指定ではなく質感の軸であり、ブルースの生々しさ、初期ヒップホップの粗さ、メタルの轟音、インダストリアルの歪んだシンセ、ビットクラッシュされた電子ドラム、ハーシュノイズ系テクノの荒さなど、生楽器・電子楽器を問わずジャンルを横断する。textureがエレクトロニック側に振られている場合、ギターではなく電子的な歪み・粗さの側面でgritを満たす曲を選ぶこと。";
+
+// texture >= 80（エレクトロニック優勢）: 電子的な粗さを主役にし、ギターロックは明示的に除外する
+const GRIT_ELECTRONIC_PROMPT_TEXT =
+  "ざらついた質感。インダストリアルの歪んだシンセ、ビットクラッシュされた電子ドラム、ハーシュノイズ系テクノの荒さ、荒いブレイクビーツなど、電子的な歪み・粗さを最優先で探すこと。歪んだギターのロック/パンクは、この条件ではむしろ避ける（textureがエレクトロニック指定のため）。クリーンに整音されたポップなシンセ（テクノポップの名曲等）は、名曲でも不適合。ジャンルの指定ではなく質感の軸である。";
+
+/** gritのpromptTextをtexture値に応じて動的に返す（単一ソース。describeStateのみが呼ぶ） */
+export function getGritPromptText(textureValue: number): string {
+  if (textureValue >= 80) return GRIT_ELECTRONIC_PROMPT_TEXT;
+  if (textureValue <= 20) return GRIT_ACOUSTIC_PROMPT_TEXT;
+  return GRIT_NEUTRAL_PROMPT_TEXT;
+}
+
 // 性格カード（時間・シーン・雰囲気）: 選択上限 MAX_PERSONALITY_CARDS（互いに椅子取りゲームをする軸）。
 // 変更9(tasks/triwx-revision-spec.md)で20→13枚に棚卸し。削除したカードの情景・感情は
 // 無選択（自由に選んでよい）か、heat/textureスライダー、または近縁カードに吸収される設計。
@@ -26,7 +53,7 @@ export const moodCards: MoodCard[] = [
   // ---- 気分・質感 ----
   { id: "dance", group: "mood", label: "踊れる", promptText: "ビートで体を動かさせる曲。ダンスミュージック、ファンク、ディスコ、ハウス、アフロビート、ダンサブルなポップ/R&Bなど。テンポが速いだけのロックや、ビートの弱いギターポップは不可。" },
   { id: "doze", group: "mood", label: "まどろみ", promptText: "眠りに落ちる手前の心地よさ。アンビエント寄り、柔らかい輪郭、急な展開がない曲。" },
-  { id: "grit", group: "mood", label: "ざらつき", promptText: "ざらついた質感。歪んだギター、荒い録音、生々しいエネルギー。歪みがなくても、録音の生々しさや非ポップスな手触り（ローファイ、ガレージ的なラフさ、オルタナのカバー等）があれば適合。クリーンに整音された美しいフォークロックの名曲（例: Harvest Moon的なもの）は、名曲でも不適合。ジャンルの指定ではなく質感の軸であり、ブルースの生々しさ、初期ヒップホップの粗さ、メタルの轟音、インダストリアルの歪んだシンセ、ビットクラッシュされた電子ドラム、ハーシュノイズ系テクノの荒さなど、生楽器・電子楽器を問わずジャンルを横断する。textureがエレクトロニック側に振られている場合、ギターではなく電子的な歪み・粗さの側面でgritを満たす曲を選ぶこと。" },
+  { id: "grit", group: "mood", label: "ざらつき", promptText: GRIT_NEUTRAL_PROMPT_TEXT }, // 実際のプロンプト生成ではdescribeStateがgetGritPromptTextで動的に差し替える。この値はUI表示等の既定値としてのみ使う。
   { id: "experimental", group: "mood", label: "実験的", promptText: "定型から外れる面白さ。変わった構成・音色・リズム。ただし聴きやすさは完全には捨てない。" },
   { id: "bittersweet", group: "mood", label: "切なさ", promptText: "甘さと痛みが同居する感情。マイナーとメジャーの揺らぎ、郷愁を誘うメロディ。夕暮れのような、昼と夜の境目の感傷も含む。" },
   { id: "nostalgia", group: "mood", label: "ノスタルジー", promptText: "懐かしさ。録音の質感やアレンジに時代の匂いがある曲。世代の記憶に触れる感じ。" },
@@ -364,11 +391,12 @@ export function describeState(state: {
   cards: string[];
   sliders: Record<SliderId, number>;
 }): string {
+  const textureValue = state.sliders?.texture ?? 50;
   const moodLines = state.cards
     .filter((id) => !isRegionCard(id))
     .map((id) => getCard(id))
     .filter((c): c is MoodCard => !!c)
-    .map((c) => `- ${c.label}: ${c.promptText}`);
+    .map((c) => `- ${c.label}: ${c.id === "grit" ? getGritPromptText(textureValue) : c.promptText}`);
 
   const regionLines = state.cards
     .filter((id) => isRegionCard(id))
