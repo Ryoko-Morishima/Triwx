@@ -7,7 +7,7 @@
 
 ## 現在地(まずここだけ読めばいい)
 
-**次にやる1つだけ選ぶなら → 「grit動的差し替え(実装済み)の実運用再テスト」。理由: コードは実装・検証済みだが、実際のモデル出力での再テストはまだ。**
+**次にやる1つだけ選ぶなら → 「grit動的差し替え+変更15(逆接語バグ修正)の実運用再テスト」。理由: どちらもコードは実装・検証済みだが、実際のモデル出力での再テストはまだ。**
 
 ### ✅ 実現済み(2026-07-19時点でデプロイ・確認済み)
 - 変更1: midnight/morningの情景ベース定義(実運用でbadRate改善を確認)
@@ -16,7 +16,8 @@
 - 変更8: judgeRejections(却下理由配列)は既にログに記録されている(model名の記録は要確認)
 - 変更9(カード・スライダー全面見直し): 12枚+12枚+4スライダー、実運用で確認済み
 - 変更12(国籍宣言のコード側ハード検証): 本番デプロイ済み。実運用で機能を確認(The Strokesは3回とも正しく却下)。ただしリストにない新顔(Cold War Kids、Killah Priest、Rage Against the Machine等)は継続的に見つかる、都度追加のいたちごっこ状態
-- **変更13続き(gritのpromptTextをtexture値に応じて動的に差し替え): `definitions.ts`に`getGritPromptText(textureValue)`を実装(texture>=80→電子優先版、<=20→従来のアコースティック版、それ以外→両論併記版)。`describeState`のmoodLines構築を、grit限定でこの関数呼び出しに置き換えた。単一ソース確認: `generateCandidates`(core.ts)はdescribeStateが返す`stateText`をそのまま埋め込むだけで、カードのpromptTextを直接参照する箇所は元々存在しなかった(describeStateのみの変更で両方に伝播する)。texture=0/15/20/21/50/79/80/81/100の9値でAPIを叩かない検証スクリプトを実行し、20/80の閾値で正しく切り替わることを確認済み。**実運用での再テスト(`grit+uk+texture=100`で電子的な曲が出るか)は未実施。**
+- **変更13続き(gritのpromptTextをtexture値に応じて動的に差し替え): `definitions.ts`に`getGritPromptText(textureValue)`を実装(texture>=80→電子優先版、<=20→従来のアコースティック版、それ以外→両論併記版)。`describeState`のmoodLines構築を、grit限定でこの関数呼び出しに置き換えた。単一ソース確認: `generateCandidates`(core.ts)はdescribeStateが返す`stateText`をそのまま埋め込むだけで、カードのpromptTextを直接参照する箇所は元々存在しなかった(describeStateのみの変更で両方に伝播する)。texture=0/15/20/21/50/79/80/81/100の9値でAPIを叩かない検証スクリプトを実行し、20/80の閾値で正しく切り替わることを確認済み。実運用テストでは以前(変更13当初版)のArctic Monkeys/Blur等の純ギターロックとは違う顔ぶれ(Bring Me The Horizon、Bryan Ferry)が出るようになったが、両者とも純粋なインダストリアル/ハーシュノイズ系というよりメタルコアやディスコ寄りのグリット感で、「電子的な粗さ」の狙いを完全に体現できているかは要継続観察。**
+- **変更15(verifyRegionDeclarationの逆接語バグ修正): 上記変更13続きの実運用テストで、Travis Scott(アメリカ)が「国籍/活動拠点: アメリカだが、イギリスで…影響を与えた」という、正しい国籍宣言の後に対象地域名を含む正当化を書き、regionMatchesの単純な部分文字列一致がそれにヒットして誤って合格していたバグを発見・修正。`core.ts`の`verifyRegionDeclaration`で宣言文を逆接語(だが/けど/しかし/ただし/もっとも)で分割し、最初に断言した部分だけを判定するよう変更。Travis Scottの実例を含む8ケースの回帰テスト(APIを叩かない検証スクリプト)で全て合格を確認済み。**実運用での再テストは未実施。**
 - T4: 散らし具合レポート(`/api/log?stats=1`)、動作確認済み
 - ジングルの声の固定ファイル化(ただしテキストは要再修正、下記11-1)
 
@@ -707,6 +708,43 @@ export const exclusionPairs: [string, string][] = [
 最も確かな1曲を選び、実際の特徴だけを理由として出力する。
 ```
 
+---
+
+## 変更15: verifyRegionDeclarationの逆接語バグ修正(2026-07-19 実運用フィードバック)
+
+### 背景
+変更13続き(grit動的差し替え)デプロイ後の`uk + grit + texture=100`実運用テストで、Travis Scott(アメリカ)が選出された:
+
+```
+candidateWhy: "国籍/活動拠点: アメリカだが、イギリスで数回パフォーマンスを
+行っており、UKガラージに影響を与えたアーティストとしての評価がある。
+電子的な歪みと多層的なビートを特徴とする。"
+```
+
+モデル自身は**正しく「アメリカ」と断言しており、虚偽申告ではない**。問題はコード側にあった: `regionMatches`が抽出した宣言文字列全体に対して単純な部分文字列一致(`.includes()`)を行っていたため、「アメリカだが、イギリスで…影響を与えた」という、変更9-11で禁止したはずの"影響力"型の正当化が後に続くと、その中の「イギリス」「UK」にヒットして誤って合格判定になっていた。
+
+同じテストで、Bring Me The Horizon(実際はイギリスのバンド)自身の他曲やThe Prodigy(イギリス)が、逆に「イギリスのアーティストであるため不合格」という趣旨の理由でjudgeRejectionsに却下されている観察もあった。これはモデル自身の自己判定ロジックの混乱であり、今回は実害(bad選出)には至っていないため対応は見送るが、記録として残す。
+
+### 対策: 宣言文を逆接語で分割し、最初に断言した部分だけを判定に使う
+
+```typescript
+const HEDGE_SPLIT_RE = /だが|けど|しかし|ただし|もっとも/;
+
+export function verifyRegionDeclaration(candidateText: string, regionCardId: string): boolean {
+  const match = String(candidateText ?? "").match(REGION_DECLARATION_RE);
+  if (!match) return false;
+  const primary = match[1].split(HEDGE_SPLIT_RE)[0];
+  return regionMatches(primary, regionCardId);
+}
+```
+
+逆接語のリストは今回判明した「だが/けど/しかし/ただし/もっとも」のみとする。「とはいえ」「ではあるものの」等、別の逆接表現で同種の問題が再発する可能性はあるが、網羅的なリスト化はせず、実際に見つかった時点でリストに追加する運用とする(既存のKNOWN_ARTIST_NATIONALITY_OVERRIDESと同じ「都度追加」方針)。
+
+### 検証結果(2026-07-19、APIを叩かない検証スクリプトで確認)
+- Travis Scottの実例: `false`(却下)に修正されることを確認
+- 既存の回帰ケース(The Strokesの記載なし、正しいUK宣言、The Killersの虚偽申告→補正リスト側で別途弾く対象、usa宣言、world_tripの除外)は全て従来どおりの結果を維持
+- 逆接語「けど」でも同様に弾けることを確認
+- 正しい宣言の直後の句点で文が終わる場合(逆接語が別文にある場合)は影響を受けないことを確認
 
 
 

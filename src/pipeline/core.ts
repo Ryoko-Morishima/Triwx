@@ -130,12 +130,21 @@ export async function generateCandidates(params: {
 // 抽出し、地域カードと一致するかコード側でハード検証する（fill route側でpassed候補に適用）。
 const REGION_DECLARATION_RE = /国籍\/活動拠点[:：]\s*(.+?)(?:[。.\n]|$)/;
 
+// 実運用で判明したバグ（2026-07-19、Travis Scottの実例）: 「国籍/活動拠点: アメリカだが、
+// イギリスで数回パフォーマンスを行っており…」のように、正しい国籍を断言した直後に対象地域名を
+// 含む正当化（変更9-11で禁止したはずの"影響力"型の言い訳）が続くと、regionMatchesの単純な
+// 部分文字列一致がその正当化部分にヒットしてしまい、誤って合格判定になっていた。
+// 宣言文を逆接語で分割し、最初に断言した部分だけを判定に使うことで、後続の言い訳を無視する。
+const HEDGE_SPLIT_RE = /だが|けど|しかし|ただし|もっとも/;
+
 /** candidateのwhy(またはreasonなどの自己判定テキスト)に含まれる国籍/活動拠点宣言を
-    抽出し、指定地域カードと一致するか検証する。記載自体がなければ不合格。 */
+    抽出し、指定地域カードと一致するか検証する。記載自体がなければ不合格。
+    逆接語以降（言い訳・正当化）は判定に使わず、最初に断言した部分だけを見る。 */
 export function verifyRegionDeclaration(candidateText: string, regionCardId: string): boolean {
   const match = String(candidateText ?? "").match(REGION_DECLARATION_RE);
   if (!match) return false; // 記載なし→不合格(省略不可の指示に従っていない)
-  return regionMatches(match[1], regionCardId);
+  const primary = match[1].split(HEDGE_SPLIT_RE)[0];
+  return regionMatches(primary, regionCardId);
 }
 
 // 変更14: 変更12改訂だけでは「候補の却下段階では正確な国籍を判定できるのに、
