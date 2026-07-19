@@ -159,6 +159,9 @@ const KNOWN_ARTIST_NATIONALITY_OVERRIDES: Record<string, string> = {
   "sir sly": "usa",
   "the strokes": "usa",
   "the white stripes": "usa",
+  // 2026-07-19追加: uk + grit + texture=100の実運用テストで、逆接語を使わず
+  // 最初から堂々と「国籍/活動拠点: イギリス」と虚偽申告し選出された（変更15の対象外パターン）
+  "moses sumney": "usa",
 };
 
 /** モデルの自己申告より優先すべき、既知の国籍補正値を返す（未登録なら null） */
@@ -181,8 +184,13 @@ export function normalizeName(s: string): string {
 // 変更7a: カラオケ/インスト/ライブ/リミックス等は原曲ではないため解決結果から弾く（ハード除外）。
 // 実績: 「青い山脈 - オリジナル・カラオケ」がjudge通過してbadになった
 // （normalizeNameがダッシュ以降を落とすため、この手のタイトルはtitleExact判定をすり抜けてしまう）。
+// 実績2(2026-07-19): 「Fools Gold - Grooverider's Mix」のような、remixという単語を
+// 使わない別バージョン表記（リミキサー名の所有格 + Mix）がすり抜けてbadになった。
+// 裸の"mix"は追加しない（"Mixed Emotions"のような実在曲名や、ダンス曲の原曲を示す
+// 正規のタグ"Original Mix"まで誤って弾いてしまうため）。実際に問題になった
+// パターン（所有格+Mix、および業界で確立された別バージョン系の複合語）だけを狙い撃ちする。
 const VERSION_MARKERS =
-  /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal|カラオケ|インストゥルメンタル|インスト|ライブ|ライヴ|リミックス/i;
+  /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal|['’]s\s+mix|radio\s+mix|club\s+mix|extended\s+mix|dub\s+mix|カラオケ|インストゥルメンタル|インスト|ライブ|ライヴ|リミックス/i;
 const REISSUE_MARKERS = /remaster|reissue|anniversary|deluxe|expanded/i;
 
 /** バージョン選択スコア（小さいほど良い）。原曲を優先する。

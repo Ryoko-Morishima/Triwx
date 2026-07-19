@@ -7,7 +7,7 @@
 
 ## 現在地(まずここだけ読めばいい)
 
-**次にやる1つだけ選ぶなら → 「grit動的差し替え+変更15(逆接語バグ修正)の実運用再テスト」。理由: どちらもコードは実装・検証済みだが、実際のモデル出力での再テストはまだ。**
+**次にやる1つだけ選ぶなら → 「`grit + 非英米地域カード`/`grit + dance`の検証」。理由: 変更13続き・変更15・16・17は実装・実運用再テスト済み。**
 
 ### ✅ 実現済み(2026-07-19時点でデプロイ・確認済み)
 - 変更1: midnight/morningの情景ベース定義(実運用でbadRate改善を確認)
@@ -15,14 +15,16 @@
 - 変更6: 自己判定内蔵の生成プロンプト(`promptVersion: v9-self-judge`で稼働中)
 - 変更8: judgeRejections(却下理由配列)は既にログに記録されている(model名の記録は要確認)
 - 変更9(カード・スライダー全面見直し): 12枚+12枚+4スライダー、実運用で確認済み
-- 変更12(国籍宣言のコード側ハード検証): 本番デプロイ済み。実運用で機能を確認(The Strokesは3回とも正しく却下)。ただしリストにない新顔(Cold War Kids、Killah Priest、Rage Against the Machine等)は継続的に見つかる、都度追加のいたちごっこ状態
-- **変更13続き(gritのpromptTextをtexture値に応じて動的に差し替え): `definitions.ts`に`getGritPromptText(textureValue)`を実装(texture>=80→電子優先版、<=20→従来のアコースティック版、それ以外→両論併記版)。`describeState`のmoodLines構築を、grit限定でこの関数呼び出しに置き換えた。単一ソース確認: `generateCandidates`(core.ts)はdescribeStateが返す`stateText`をそのまま埋め込むだけで、カードのpromptTextを直接参照する箇所は元々存在しなかった(describeStateのみの変更で両方に伝播する)。texture=0/15/20/21/50/79/80/81/100の9値でAPIを叩かない検証スクリプトを実行し、20/80の閾値で正しく切り替わることを確認済み。実運用テストでは以前(変更13当初版)のArctic Monkeys/Blur等の純ギターロックとは違う顔ぶれ(Bring Me The Horizon、Bryan Ferry)が出るようになったが、両者とも純粋なインダストリアル/ハーシュノイズ系というよりメタルコアやディスコ寄りのグリット感で、「電子的な粗さ」の狙いを完全に体現できているかは要継続観察。**
-- **変更15(verifyRegionDeclarationの逆接語バグ修正): 上記変更13続きの実運用テストで、Travis Scott(アメリカ)が「国籍/活動拠点: アメリカだが、イギリスで…影響を与えた」という、正しい国籍宣言の後に対象地域名を含む正当化を書き、regionMatchesの単純な部分文字列一致がそれにヒットして誤って合格していたバグを発見・修正。`core.ts`の`verifyRegionDeclaration`で宣言文を逆接語(だが/けど/しかし/ただし/もっとも)で分割し、最初に断言した部分だけを判定するよう変更。Travis Scottの実例を含む8ケースの回帰テスト(APIを叩かない検証スクリプト)で全て合格を確認済み。**実運用での再テストは未実施。**
+- 変更12(国籍宣言のコード側ハード検証): 本番デプロイ済み。実運用で機能を確認(The Strokesは3回とも正しく却下)。ただしリストにない新顔は継続的に見つかる、都度追加のいたちごっこ状態
+- **変更13続き(gritのpromptTextをtexture値に応じて動的に差し替え): 実運用再テスト済み。`grit + uk + texture=100`でMassive Attack(トリップホップ)、Ladytron(エレクトロクラッシュ)、alt-J、David Bowie等、以前(Arctic Monkeys/Blur等の純ギターロック)とは明確に違う電子的な質感のUKアーティストが選ばれることを確認。効果あり。**
+- **変更15(verifyRegionDeclarationの逆接語バグ修正): 実運用再テスト済み。Martin Garrix(オランダ)・Tame Impala(オーストラリア)を自己判定/コード側検証の両方で正しく却下できていることを確認。**
+- **変更16(国籍虚偽申告の新顔追加): `moses sumney`をKNOWN_ARTIST_NATIONALITY_OVERRIDESに追加(usa)。実運用テストで「国籍/活動拠点: イギリス」と逆接語を使わず堂々と虚偽申告し選出された実例(ユーザー自身が再生中にスキップ)を受けての対応。**
+- **変更17(VERSION_MARKERSに所有格+Mix、業界標準の別バージョン複合語を追加): `"Fools Gold - Grooverider's Mix"`のような、remixという単語を使わない別バージョン表記がすり抜けてbadになった実例を受けて対応。`'s mix`(直/曲カーリークォート両対応)、`radio mix`、`club mix`、`extended mix`、`dub mix`を追加。裸の`mix`は追加していない("Mixed Emotions"のような実在曲名や、ダンス曲の原曲を示す正規タグ"Original Mix"を誤って弾かないため)。11ケースの回帰テスト(APIを叩かない検証スクリプト)で全て合格を確認済み。**
 - T4: 散らし具合レポート(`/api/log?stats=1`)、動作確認済み
 - ジングルの声の固定ファイル化(ただしテキストは要再修正、下記11-1)
 
 ### ❌ 試したが効果なしと判明したもの
-- **変更13当初版(gritの定義文にエレクトロニックな例を追記するだけの対策)**: 実装・デプロイ済みで実運用テストしたが、`grit + texture=100`で依然ギター中心の曲しか出ない。文言を後から足すだけでは、gritの"ギター"という強い連想を覆せないと判明。動的差し替え版(上記)で対応済み、再テスト待ち。
+- **変更13当初版(gritの定義文にエレクトロニックな例を追記するだけの対策)**: 実装・デプロイ済みで実運用テストしたが、`grit + texture=100`で依然ギター中心の曲しか出ない。文言を後から足すだけでは、gritの"ギター"という強い連想を覆せないと判明。動的差し替え版(変更13続き)で対応済み、実運用再テストで効果を確認。
 
 ### 🔲 未着手(優先順位順、上から着手推奨)
 **A. 選曲ロジック(影響大きい順)**
@@ -745,6 +747,54 @@ export function verifyRegionDeclaration(candidateText: string, regionCardId: str
 - 既存の回帰ケース(The Strokesの記載なし、正しいUK宣言、The Killersの虚偽申告→補正リスト側で別途弾く対象、usa宣言、world_tripの除外)は全て従来どおりの結果を維持
 - 逆接語「けど」でも同様に弾けることを確認
 - 正しい宣言の直後の句点で文が終わる場合(逆接語が別文にある場合)は影響を受けないことを確認
+
+---
+
+## 変更16: 国籍虚偽申告の新顔(Moses Sumney)追加(2026-07-19 実運用フィードバック)
+
+### 背景
+変更13続き・変更15デプロイ後の`uk + grit + texture=100`実運用再テストで、Moses Sumney(実際はアメリカ・カリフォルニア出身、ガーナ育ち)が選出された:
+
+```
+candidateWhy: "エレクトロニックな要素とざらつきがあり、イギリスの音楽シーンに
+影響を受けたスタイルを持つ。国籍/活動拠点: イギリス"
+```
+
+変更14(The Killers等)や変更15(Travis Scottの逆接語パターン)とは異なり、**逆接語を一切使わず、最初から堂々と「イギリス」と虚偽申告**している。このパターンは変更15の対象外(逆接語で分割しても変わらない)であり、変更12改訂で想定していた「既知の限界」(虚偽申告そのものは検出できない)の通常のケース。ユーザー自身が再生中にこの曲をスキップしており、体感としても違和感があったことがうかがえる。
+
+### 対策
+`KNOWN_ARTIST_NATIONALITY_OVERRIDES`に`"moses sumney": "usa"`を追加。既存の運用方針(網羅的なDBは作らず、実運用で見つかったアーティストのみ都度追加)を継続する。
+
+### 検証結果
+`getArtistNationalityOverride("Moses Sumney")`が`"usa"`を返すことをAPIを叩かない検証スクリプトで確認済み。実運用での再テストは未実施。
+
+---
+
+## 変更17: VERSION_MARKERSに所有格+Mix、別バージョン系複合語を追加(2026-07-19 実運用フィードバック)
+
+### 背景
+同じ実運用テストで、The Stone Rosesの候補が実際には`"Fools Gold - Grooverider's Mix"`(リミックスアルバム『The Remixes』収録)として解決された。`resolveMeta.titleExact: false`が示す通り、意図した原曲ではない。既存の変更7a(VERSION_MARKERS)は`remix`/`リミックス`は捕捉するが、`"〜's Mix"`という**remixという単語を使わない別バージョン表記**は捕捉できていなかった。
+
+### 検討: 裸の"mix"を追加しない理由
+ユーザーからの指摘で、単純に`mix`をキーワードとして追加すると誤爆することが判明した:
+- `"Mixed Emotions"`(実在する曲名)を誤って除外してしまう
+- `"Original Mix"`(ダンス/エレクトロニック曲で原曲を示す正規のタグ)を誤って除外してしまう——`grit + texture=100`はエレクトロニック系の曲を集めやすい条件のため、この誤爆は実害が大きい
+
+### 対策
+実際に問題になったパターンだけを狙い撃ちする:
+
+```typescript
+const VERSION_MARKERS =
+  /remix|live|edit|acoustic|instrumental|karaoke|demo|sped up|slowed|cover|version|take\s*\d+|outtake|alternate|anthology|rehearsal|['’]s\s+mix|radio\s+mix|club\s+mix|extended\s+mix|dub\s+mix|カラオケ|インストゥルメンタル|インスト|ライブ|ライヴ|リミックス/i;
+```
+
+- `['’]s\s+mix`: 所有格(リミキサー名)+ Mix。直/カーリー両方のアポストロフィに対応。今回の実例`"Grooverider's Mix"`を捕捉する。
+- `radio mix` / `club mix` / `extended mix` / `dub mix`: 業界で確立された別バージョン系の複合語。裸の`mix`のような一般名詞ではなく、実在曲名との衝突リスクが低い具体的な複合語のみ追加した。
+
+### 検証結果(2026-07-19、APIを叩かない検証スクリプトで確認)
+11ケースの回帰テストで全て合格:
+- 除外すべき: `"Grooverider's Mix"`(直/カーリー両方)、`"(Radio Mix)"`、`"(Club Mix)"`、`"(Extended Mix)"`、`"(Dub Mix)"`
+- 誤爆してはいけない: `"Mixed Emotions"`、`"Original Mix"`、`"Six Mixtapes"`、`"Admix"`、通常のオリジナルタイトル(`"Fools Gold"`)
 
 
 
