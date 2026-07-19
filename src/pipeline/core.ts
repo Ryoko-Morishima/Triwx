@@ -162,6 +162,9 @@ const KNOWN_ARTIST_NATIONALITY_OVERRIDES: Record<string, string> = {
   // 2026-07-19追加(変更15-3): uk + grit + texture=100の実運用テストで、逆接語を使わず
   // 最初から堂々と「国籍/活動拠点: イギリス」と虚偽申告し選出された（変更15-2の対象外パターン）
   "moses sumney": "usa",
+  // 2026-07-19追加: africa + grit + texture=100の実運用テストで、「国籍/活動拠点: 南アフリカ」
+  // と虚偽申告し選出された（実際はアメリカ・ペンシルベニア出身、ベルリン拠点）
+  "lyra pramuk": "usa",
 };
 
 /** モデルの自己申告より優先すべき、既知の国籍補正値を返す（未登録なら null） */
