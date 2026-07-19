@@ -18,6 +18,7 @@ import {
   normalizeName,
   buildNarration,
   verifyRegionDeclaration,
+  getArtistNationalityOverride,
   PROMPT_VERSION,
   type Policy,
   type StationState,
@@ -150,14 +151,24 @@ export async function POST(req: Request) {
         // 変更12改訂: 地域カード指定時は、モデルの自己判定を信用せず、
         // candidateWhyの「国籍/活動拠点: ○○」宣言をコード側で機械的に再検証する
         // （却下段階では機能していても最終選出で一致しないケースが実運用で再発したため）
-        if (currentRegionCard && !verifyRegionDeclaration(c.why, currentRegionCard)) {
-          judgeRejectionsAll.push({
-            title: c.title,
-            artist: c.artist,
-            reason: "コード側検証: 国籍/活動拠点の記載なし、または指定地域と不一致",
-          });
-          judgeRejectedTotal += 1;
-          continue;
+        // 変更14: ただしThe Killers等、モデルが系統的に虚偽申告する頻出アーティストは
+        // 自己申告そのものが信用できないため、既知の補正リストがあればそちらを優先する
+        if (currentRegionCard) {
+          const override = getArtistNationalityOverride(c.artist);
+          const regionOk = override
+            ? override === currentRegionCard
+            : verifyRegionDeclaration(c.why, currentRegionCard);
+          if (!regionOk) {
+            judgeRejectionsAll.push({
+              title: c.title,
+              artist: c.artist,
+              reason: override
+                ? "コード側検証: 既知の国籍補正リストにより指定地域と不一致(自己申告は無視)"
+                : "コード側検証: 国籍/活動拠点の記載なし、または指定地域と不一致",
+            });
+            judgeRejectedTotal += 1;
+            continue;
+          }
         }
 
         const r = await resolveTrack(c, token);

@@ -138,6 +138,25 @@ export function verifyRegionDeclaration(candidateText: string, regionCardId: str
   return regionMatches(match[1], regionCardId);
 }
 
+// 変更14: 変更12改訂だけでは「候補の却下段階では正確な国籍を判定できるのに、
+// 選出候補になったアーティストにだけ虚偽の国籍を自己申告する」系統的な誤りを防げないと
+// 実運用で判明した（2000年代ガレージロック/インディーリバイバルという同一ジャンルに属する
+// The Killers/Sir Sly/The Strokes/The White Stripes=いずれもアメリカが「イギリス」と
+// 誤申告され、7セグメント中4件で選出された）。モデルの自己申告より優先して機械的に
+// 上書きする軽量な補正リストで対抗する。網羅的なデータベースは意図的に作らず、
+// 実運用で誤認が確認されたアーティストのみ都度追加する運用とする。
+const KNOWN_ARTIST_NATIONALITY_OVERRIDES: Record<string, string> = {
+  "the killers": "usa",
+  "sir sly": "usa",
+  "the strokes": "usa",
+  "the white stripes": "usa",
+};
+
+/** モデルの自己申告より優先すべき、既知の国籍補正値を返す（未登録なら null） */
+export function getArtistNationalityOverride(artist: string): string | null {
+  return KNOWN_ARTIST_NATIONALITY_OVERRIDES[normalizeName(artist)] ?? null;
+}
+
 // ---- Spotify解決 ----
 
 export function normalizeName(s: string): string {

@@ -243,6 +243,11 @@ export const comboHints: { cards: string[]; promptText: string }[] = [
     cards: ["morning", "bittersweet"],
     promptText: "徹夜明けの朝、昨夜を引きずった朝。清潔な朝ではなく、カムダウンの時間。",
   },
+  {
+    cards: ["grit", "uk"],
+    promptText:
+      "イギリスのガレージロック/インディーリバイバル。Arctic Monkeys、The Libertines、Kaiser Chiefs、Franz Ferdinand(スコットランド)、The Vaccinesなど。同時代のアメリカのガレージロックリバイバル(The Strokes、The White Stripes、The Killersなど)と音楽的に近いが、これらはアメリカのバンドなので選ばない。",
+  },
 ];
 
 // ---- スライダー ----
