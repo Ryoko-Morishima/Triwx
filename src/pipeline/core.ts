@@ -159,8 +159,8 @@ const KNOWN_ARTIST_NATIONALITY_OVERRIDES: Record<string, string> = {
   "sir sly": "usa",
   "the strokes": "usa",
   "the white stripes": "usa",
-  // 2026-07-19追加: uk + grit + texture=100の実運用テストで、逆接語を使わず
-  // 最初から堂々と「国籍/活動拠点: イギリス」と虚偽申告し選出された（変更15の対象外パターン）
+  // 2026-07-19追加(変更15-3): uk + grit + texture=100の実運用テストで、逆接語を使わず
+  // 最初から堂々と「国籍/活動拠点: イギリス」と虚偽申告し選出された（変更15-2の対象外パターン）
   "moses sumney": "usa",
 };
 
@@ -184,7 +184,7 @@ export function normalizeName(s: string): string {
 // 変更7a: カラオケ/インスト/ライブ/リミックス等は原曲ではないため解決結果から弾く（ハード除外）。
 // 実績: 「青い山脈 - オリジナル・カラオケ」がjudge通過してbadになった
 // （normalizeNameがダッシュ以降を落とすため、この手のタイトルはtitleExact判定をすり抜けてしまう）。
-// 実績2(2026-07-19): 「Fools Gold - Grooverider's Mix」のような、remixという単語を
+// 実績2(2026-07-19、変更15-4): 「Fools Gold - Grooverider's Mix」のような、remixという単語を
 // 使わない別バージョン表記（リミキサー名の所有格 + Mix）がすり抜けてbadになった。
 // 裸の"mix"は追加しない（"Mixed Emotions"のような実在曲名や、ダンス曲の原曲を示す
 // 正規のタグ"Original Mix"まで誤って弾いてしまうため）。実際に問題になった
