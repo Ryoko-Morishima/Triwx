@@ -121,6 +121,83 @@ export function isRegionCard(id: string): boolean {
   return regionCards.some((c) => c.id === id);
 }
 
+// ---- 地域宣言のコード側ハード検証（変更12改訂） ----
+// generateCandidatesが返すwhy/reasonの「国籍/活動拠点: ○○」を機械的に照合するための
+// 簡易な文字列許可（or 除外）リスト。厳密な国籍データベースは意図的に使わない
+// （tasks/triwx-revision-spec.md 変更12「既知の限界」参照）。
+
+type RegionMatchRule = { type: "allow"; terms: string[] } | { type: "deny"; terms: string[] };
+
+export const regionMatchRules: Record<string, RegionMatchRule> = {
+  lang_ja: { type: "allow", terms: ["日本", "japan"] },
+  kr: { type: "allow", terms: ["韓国", "korea"] },
+  asia: {
+    type: "allow",
+    terms: [
+      "台湾", "香港", "タイ", "インドネシア", "フィリピン", "ベトナム", "マレーシア", "シンガポール", "中国", "モンゴル", "ミャンマー", "カンボジア", "ラオス",
+      "taiwan", "hong kong", "thailand", "indonesia", "philippines", "vietnam", "malaysia", "singapore", "china", "mongolia",
+    ],
+  },
+  latin: {
+    type: "allow",
+    terms: [
+      "メキシコ", "ブラジル", "アルゼンチン", "コロンビア", "チリ", "ペルー", "ベネズエラ", "キューバ", "ドミニカ", "ウルグアイ", "スペイン", "ポルトガル",
+      "mexico", "brazil", "argentina", "colombia", "chile", "peru", "venezuela", "cuba", "dominican", "uruguay", "spain", "portugal",
+    ],
+  },
+  africa: {
+    type: "allow",
+    terms: [
+      "ナイジェリア", "南アフリカ", "ケニア", "ガーナ", "エチオピア", "セネガル", "マリ", "アンゴラ", "エジプト", "モロッコ", "コンゴ",
+      "nigeria", "south africa", "kenya", "ghana", "ethiopia", "senegal", "mali", "angola", "egypt", "morocco", "congo",
+    ],
+  },
+  europe: {
+    type: "allow",
+    terms: [
+      "フランス", "ドイツ", "イタリア", "オランダ", "ベルギー", "スイス", "オーストリア", "スペイン", "ポルトガル", "スウェーデン", "ノルウェー", "デンマーク", "フィンランド", "アイスランド", "ポーランド", "チェコ", "ハンガリー", "ルーマニア", "ギリシャ", "ロシア", "ウクライナ",
+      "france", "germany", "italy", "netherlands", "belgium", "switzerland", "austria", "spain", "portugal", "sweden", "norway", "denmark", "finland", "iceland", "poland", "czech", "hungary", "romania", "greece", "russia", "ukraine",
+    ],
+  },
+  // world_trip: 「英語圏と日本の有名曲は避ける」という除外条件のため許可リストではなく除外リストにする
+  world_trip: {
+    type: "deny",
+    terms: ["アメリカ", "イギリス", "オーストラリア", "カナダ", "日本", "america", "usa", "uk", "britain", "australia", "canada", "japan"],
+  },
+  india: { type: "allow", terms: ["インド", "india"] },
+  middle_east: {
+    type: "allow",
+    terms: [
+      "トルコ", "イラン", "イスラエル", "サウジ", "アラブ", "レバノン", "エジプト", "シリア", "イラク", "ヨルダン",
+      "turkey", "iran", "israel", "saudi", "lebanon", "egypt", "syria", "iraq", "jordan",
+    ],
+  },
+  caribbean: {
+    type: "allow",
+    terms: [
+      "ジャマイカ", "トリニダード", "ハイチ", "バハマ", "キューバ", "プエルトリコ", "バルバドス",
+      "jamaica", "trinidad", "haiti", "bahamas", "cuba", "puerto rico", "barbados",
+    ],
+  },
+  uk: {
+    type: "allow",
+    terms: [
+      "イギリス", "英国", "スコットランド", "イングランド", "ウェールズ", "北アイルランド",
+      "uk", "united kingdom", "britain", "british", "england", "scotland", "wales",
+    ],
+  },
+  usa: { type: "allow", terms: ["アメリカ", "米国", "usa", "united states", "america"] },
+};
+
+/** 宣言された国籍/活動拠点の文字列が、指定地域カードの許可(または除外)リストに合致するか */
+export function regionMatches(declared: string, regionCardId: string): boolean {
+  const rule = regionMatchRules[regionCardId];
+  if (!rule) return true; // ルール未定義の地域カード（将来追加分）は検証をスキップする安全弁
+  const norm = declared.toLowerCase();
+  const hit = rule.terms.some((t) => norm.includes(t.toLowerCase()));
+  return rule.type === "allow" ? hit : !hit;
+}
+
 // ---- 選択上限・排他（単一ソース。UIの選択制御が参照する） ----
 
 export const MAX_PERSONALITY_CARDS = 2; // 時間・シーン・雰囲気カードの合計
@@ -306,7 +383,10 @@ export function describeState(state: {
   ];
 
   if (regionLines.length) {
-    sections.push(`【ことば・地域（最優先・必ず守る）】\n${regionLines.join("\n")}`);
+    sections.push(
+      `【ことば・地域（最優先・必ず守る）】\n${regionLines.join("\n")}\n` +
+        "- 判定基準: 影響力・知名度・活動拠点などの理由による例外を一切認めない。「ドイツのアーティストだが影響力が高いため」のような正当化は禁止。指定された地域に実際に属するアーティストの曲以外は、理由を問わず不合格とする。",
+    );
   }
 
   sections.push(`【調整スライダー】\n${sliderLines.join("\n")}`);

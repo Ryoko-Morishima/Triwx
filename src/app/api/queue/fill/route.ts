@@ -17,6 +17,7 @@ import {
   resolveTrack,
   normalizeName,
   buildNarration,
+  verifyRegionDeclaration,
   PROMPT_VERSION,
   type Policy,
   type StationState,
@@ -73,7 +74,8 @@ export async function POST(req: Request) {
     const eraRange = eraYearRange(state.sliders?.era ?? 50);
 
     // 地域カード未指定のときだけ、言語圏への吸着を検知して崩す
-    const hasRegionCard = (state.cards ?? []).some((id) => isRegionCard(id));
+    const currentRegionCard = (state.cards ?? []).find((id) => isRegionCard(id)) ?? null;
+    const hasRegionCard = !!currentRegionCard;
     const driftNote = hasRegionCard ? null : detectLanguageDrift(history);
 
     // 選曲条件の生テキスト（プロンプトに毎回注入し、直近の傾向より優先させる）
@@ -145,6 +147,18 @@ export async function POST(req: Request) {
         if (cooldownArtists.has(normalizeName(c.artist))) continue;
         // 言語ハードゲート: 是正中は日本語スクリプトの候補を通さない（プロンプト任せにしない）
         if (driftNote && (hasJapaneseScript(c.title) || hasJapaneseScript(c.artist))) continue;
+        // 変更12改訂: 地域カード指定時は、モデルの自己判定を信用せず、
+        // candidateWhyの「国籍/活動拠点: ○○」宣言をコード側で機械的に再検証する
+        // （却下段階では機能していても最終選出で一致しないケースが実運用で再発したため）
+        if (currentRegionCard && !verifyRegionDeclaration(c.why, currentRegionCard)) {
+          judgeRejectionsAll.push({
+            title: c.title,
+            artist: c.artist,
+            reason: "コード側検証: 国籍/活動拠点の記載なし、または指定地域と不一致",
+          });
+          judgeRejectedTotal += 1;
+          continue;
+        }
 
         const r = await resolveTrack(c, token);
         if (!r) continue;
@@ -195,7 +209,6 @@ export async function POST(req: Request) {
       try {
         const logs = await listSegments(300, undefined).catch(() => listSegments(300, sessionId));
         // 変更7c: 現在の地域カードと元の再生時のconditionSnapshotを照合し、不一致なら注入しない
-        const currentRegionCard = (state.cards ?? []).find((id) => isRegionCard(id)) ?? null;
         const currentPersonalityCards = (state.cards ?? []).filter((id) => !isRegionCard(id));
         const pick = pickReplay(logs, history, {
           avoidJapanese: !!driftNote,
