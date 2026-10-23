@@ -165,7 +165,7 @@ export default function Page() {
       <div className="radio">
         {/* 上部: ロゴとランプ */}
         <div className="radio-top">
-          <span className="logo">TRIWX</span>
+          <span className="logo">TRIWX</span>\n          <a href="/special/catopaco" style={{ marginLeft: 18, color: "inherit", fontSize: 13, textDecoration: "underline" }}>特集番組：カトパコの音楽地図 →</a>
           <span className={`lamp ${onAir ? "lit" : live ? "on" : ""}`}>
             <span className="lamp-dot" />
             {engine.status === "starved" ? "選局中" : onAir ? "マイク" : live ? "音楽" : "停波"}
