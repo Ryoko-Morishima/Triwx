@@ -154,11 +154,13 @@ export default function SpecialPage() {
       if(i>=program.songs.length){updatePhase("ended");setSpoken("番組は終了しました。");return}
       currentIndex.current=i;setIndex(i);
       const song=program.songs[i];
+      const ticket=skipSignal.current;
       // Resolve in parallel with narration, while keeping the spoken introduction in order.
       const resolution=resolveSong(i);
       if(song.intro)await talk(song.intro);
-      if(!alive.current)return;
+      if(!alive.current||skipSignal.current!==ticket)return;
       const resolved=await resolution;
+      if(!alive.current||skipSignal.current!==ticket)return;
       await playSong(i,resolved);
     }catch(e){
       updatePhase("error");setMessage(e instanceof Error?e.message:String(e));
@@ -168,6 +170,7 @@ export default function SpecialPage() {
   const afterTrack=useCallback(async()=>{
     if(busy.current||!alive.current)return;
     busy.current=true;
+    const ticket=skipSignal.current;
     try{
       await player.current?.pause();
       const i=currentIndex.current;
@@ -175,7 +178,7 @@ export default function SpecialPage() {
     }finally{
       busy.current=false;
     }
-    if(alive.current)void advance(currentIndex.current+1);
+    if(alive.current&&skipSignal.current===ticket)void advance(currentIndex.current+1);
   },[talk,advance]);
 
   useEffect(()=>{
